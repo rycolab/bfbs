@@ -367,7 +367,7 @@ def get_parser():
                         "search spaces. The length of any translation is "
                         "limited to max_len_factor times the length of the "
                         "source sentence.")
-    group.add_argument("--early_stopping", default=True, type='bool',
+    group.add_argument("--early_stopping", default=False, type='bool',
                         help="Use this parameter if you are only interested in "
                         "the first best decoding result. This option has a "
                         "different effect depending on the used --decoder. For"

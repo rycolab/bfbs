@@ -1,30 +1,33 @@
-# PMI Decoding
- You'll need to install fairseq (latest version should be fine) in order to work with the models already trained. For scoring, install sacrebleu. Both can be done using the default packages in pip.
- Unzip the model checkpoints and place them in `data/ckpts` 
+# SWOR Decoding
 
- To run Dijkstra's with a normal conditional LM, use the command:
+## Dependencies 
+
+```
+fairseq
+sacrebleu
+subword-nmt
+scipy
+numpy
+```
+
+## Getting Started
+It's recommended to start with the pretrained models available from fairseq. Download any of the models from their NMT examples, unzip, and place model checkpoints in `data/ckpts`. 
+ 
+
+ To run SWOR decoding, use the command:
 
  ```
- python decode.py  --fairseq_path data/ckpts/cond_model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder dijkstra_ts 
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder dijkstra --beam 10 --gumbel --fairseq_temperature 0.1
  ```
- note that this probably won't finish since it takes up a huge amount of memory. To run beam search with k=5, use the command: 
+ where `--beam 10` would lead to 10 samples. You should get the same results using the beam decoder.
  
  ```
  python decode.py  --fairseq_path data/ckpts/cond_model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder beam --beam 5 
  ```
 
-To run dijkstra_ts with PMI and a unigram model as the marginal LM, use the command:
- ```
- python decode.py  --fairseq_path data/ckpts/cond_model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder dijkstra_ts --subtract-uni --lmbd 0.2
- ```
+### Outputs
 
- Note that lmbda is the interpolation parameter (i.e. lmbda 0.2 -> log P(y|x) - 0.2log P(y)). To run dijkstra_ts with PMI and a NN as the marginal LM, use the command:
-
- ```
- python decode.py  --fairseq_path data/ckpts/cond_model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder dijkstra_ts --subtract-marg --marg_path data/ckpts/lm.pt --lmbd 0.2
- ```
-
-You can run any of the decoders in the library and they should work with PMI (no promises that they'll finish running...). For example, you can run DFS by setting `--decoder dfs` or use regular beam search with `--decoder beam --beam <k>`.
+To see all outputs, set `--outputs nbest_sep --output_path <path_prefix>`. You'll then get a file with a sample for each position.
 
 ### Scoring
  For scoring, append the arguments `--outputs text --output_path <file_name>.txt` and then detokenize the text using the moses detokenizer script (copied to `scripts/detokenizer.perl` for ease)
