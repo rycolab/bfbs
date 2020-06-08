@@ -24,7 +24,6 @@ from sortedcontainers import SortedDict
 from collections import defaultdict
 import time
 import math
-from cam.sgnmt.decoding.MinMaxHeap import MinMaxHeap
 
 from cam.sgnmt import utils
 from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
@@ -58,13 +57,12 @@ class DijkstraTSDecoder(Decoder):
         self.nbest = max(1, decoder_args.nbest)
         self.beam = decoder_args.beam
         self.early_stopping = decoder_args.early_stopping
-        self.reward_coef = decoder_args.reward_coefficient
-        self.reward_type = decoder_args.reward_type
-
-        self.not_monotonic = (self.reward_type or decoder_args.ppmi) and not decoder_args.heuristics
+    
         self.use_heuristics = decoder_args.heuristics
         self.size_threshold = self.beam*decoder_args.memory_threshold_coef\
             if decoder_args.memory_threshold_coef > 0 else utils.INF
+
+        self.not_monotonic = False
 
         
     def decode(self, src_sentence):
@@ -76,7 +74,6 @@ class DijkstraTSDecoder(Decoder):
         self.time2 = 0
         self.time3 = 0
         
-        self.reward_bound(src_sentence)
         while self.queue_order:
             c,t = self.get_next()
             cur_queue = self.queues[t]
@@ -109,7 +106,7 @@ class DijkstraTSDecoder(Decoder):
         return self.get_full_hypos_sorted()
 
     def initialize_order_ds(self):
-        self.queues = [MinMaxHeap() for k in range(self.max_len+1)]
+        self.queues = [utils.MinMaxHeap() for k in range(self.max_len+1)]
         self.queues[0].insert((0.0, PartialHypothesis(self.get_predictor_states())))
         self.queue_order = SortedDict({0.0: 0})
         self.score_by_t = [0.0]
@@ -191,11 +188,5 @@ class DijkstraTSDecoder(Decoder):
             return True
         return False
 
-    def reward_bound(self, src_sentence):
-        if self.reward_type == "bounded":
-            # french is 0.72
-            self.l = len(src_sentence)
-        elif self.reward_type == "max":
-            self.l = self.max_len
-        
+    
         

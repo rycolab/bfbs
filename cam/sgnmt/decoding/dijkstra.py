@@ -24,7 +24,6 @@ from cam.sgnmt import utils
 from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
 
 from heapq import heappush, heappop
-from cam.sgnmt.decoding.MinMaxHeap import MinMaxHeap
 
 
 class DijkstraDecoder(Decoder):
@@ -55,7 +54,7 @@ class DijkstraDecoder(Decoder):
         self.lower_bound = self.get_empty_hypo(src_sentence) if self.use_lower_bound else None 
         self.initialize_predictors(src_sentence)
         self.cur_capacity = self.capacity
-        open_set = MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
+        open_set = utils.MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
         self.push(open_set, 0.0, PartialHypothesis(self.get_predictor_states()))
         hypo = None
         while open_set:
@@ -84,7 +83,7 @@ class DijkstraDecoder(Decoder):
     def push(self, set_, score, hypo):
         if self.lower_bound and score < self.lower_bound.score:
             return
-        if isinstance(set_, MinMaxHeap):
+        if isinstance(set_, utils.MinMaxHeap):
             if set_.size < self.cur_capacity:
                 set_.insert((-score, hypo))
             else:
@@ -97,7 +96,7 @@ class DijkstraDecoder(Decoder):
 
     
     def pop(self, set_):
-        if isinstance(set_, MinMaxHeap):
+        if isinstance(set_, utils.MinMaxHeap):
            return set_.popmin()
         else:
             return heappop(set_)

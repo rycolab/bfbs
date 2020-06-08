@@ -93,14 +93,13 @@ class ReferenceDecoder(Decoder):
 
         self.set_predictor_states(hypo.predictor_states)
         next_word = self.trgt_sentence[len(hypo.trgt_sentence)]
-        ids, posterior, score_breakdown = self.apply_predictors()
+        ids, posterior = self.apply_predictors()
 
-        max_score = utils.max(posterior)
+        max_score = utils.max_(posterior)
         hypo.predictor_states = self.get_predictor_states()
 
         hypo.score += posterior[next_word] 
-        hypo.score_breakdown.append(score_breakdown[next_word])
-        hypo.statistics.push(posterior[next_word], cur_max=max_score)
+        hypo.score_breakdown.append(posterior[next_word])
         hypo.trgt_sentence += [next_word]
         self.consume(next_word)
                 
