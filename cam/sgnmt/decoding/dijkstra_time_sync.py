@@ -1,22 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Implementation of the A* search strategy """
-
-
 import copy
 import logging
 import numpy as np
@@ -58,7 +39,6 @@ class DijkstraTSDecoder(Decoder):
         self.beam = decoder_args.beam
         self.early_stopping = decoder_args.early_stopping
     
-        self.use_heuristics = decoder_args.heuristics
         self.size_threshold = self.beam*decoder_args.memory_threshold_coef\
             if decoder_args.memory_threshold_coef > 0 else utils.INF
 
@@ -69,10 +49,6 @@ class DijkstraTSDecoder(Decoder):
         self.initialize_predictors(src_sentence)
         self.initialize_order_ds() 
         self.total_queue_size = 0
-
-        self.time1 = 0
-        self.time2 = 0
-        self.time3 = 0
         
         while self.queue_order:
             c,t = self.get_next()
@@ -97,12 +73,9 @@ class DijkstraTSDecoder(Decoder):
             for next_hypo in self._expand_hypo(hypo, self.beam):
                 self.add_hypo(next_hypo, next_queue, t+1)
                 
-            ti = time.time()
             self.update(cur_queue, t)
             self.update(next_queue, t+1)
-            self.time3 += time.time() - ti
         
-        print(self.time1, self.time2, self.time3)
         return self.get_full_hypos_sorted()
 
     def initialize_order_ds(self):
@@ -149,7 +122,6 @@ class DijkstraTSDecoder(Decoder):
             self.queues[i] = []
     
     def add_hypo(self, hypo, queue, t):
-        ti = time.time()
         score = self.get_adjusted_score(hypo)
         if score == utils.NEG_INF:
             return
@@ -163,7 +135,6 @@ class DijkstraTSDecoder(Decoder):
             min_score = -queue.peekmax()[0]
             if score > min_score:
                 queue.replacemax((-score, hypo))
-        self.time2 += time.time() - ti
         
 
     def remove_one(self):

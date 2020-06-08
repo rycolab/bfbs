@@ -128,8 +128,7 @@ def add_predictors(decoder):
                 p = FairseqPredictor(args.fairseq_path,
                                      args.fairseq_user_dir,
                                      args.fairseq_lang_pair,
-                                     args.n_cpu_threads,
-                                     args.fairseq_temperature)
+                                     args.n_cpu_threads)
             
             decoder.add_predictor(pred, p, pred_weight)
             logging.info("Initialized predictor {} (weight: {})".format(
@@ -352,7 +351,7 @@ def perplexity(hypo):
 
 
 def _generate_dummy_hypo(predictors):
-    return Hypothesis([utils.UNK_ID], 0.0, [[(0.0, w) for _, w in predictors]]) 
+    return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
 
 def do_decode(decoder, 

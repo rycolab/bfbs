@@ -1,22 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Implementation of the A* search strategy """
-
-
 import copy
 import logging
 
@@ -56,7 +37,7 @@ class DijkstraDecoder(Decoder):
         self.cur_capacity = self.capacity
         open_set = utils.MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
         self.push(open_set, 0.0, PartialHypothesis(self.get_predictor_states()))
-        hypo = None
+
         while open_set:
             c,hypo = self.pop(open_set)#.popmin()
             logging.debug("Expand (est=%f score=%f exp=%d best=%f): sentence: %s"
@@ -77,6 +58,8 @@ class DijkstraDecoder(Decoder):
                 score = self.get_adjusted_score(next_hypo)
                 self.push(open_set, score, next_hypo)
 
+        if not self.full_hypos:
+            self.add_full_hypo(self.lower_bound.generate_full_hypothesis())
         return self.get_full_hypos_sorted()
 
     

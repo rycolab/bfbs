@@ -250,7 +250,6 @@ class Decoder(Observable):
         self.max_len_factor = decoder_args.max_len_factor
         self.predictors = [] # Tuples (predictor, weight)
         self.heuristics = []
-        self.heuristic_predictors = []
         self.predictor_names = []
         self.gumbel = decoder_args.gumbel
         self.allow_unk_in_output = decoder_args.allow_unk_in_output
@@ -258,8 +257,7 @@ class Decoder(Observable):
         self.combine_posteriors = self._combine_posteriors_simple
         self.current_sen_id = -1
         self.apply_predictors_count = 0
-        self.lower_bounds = []
-        self.interpolation_strategies = []
+        self.temperature = decoder_args.temperature
     
     def add_predictor(self, name, predictor, weight=1.0):
         """Adds a predictor to the decoder. This means that this 
@@ -334,7 +332,7 @@ class Decoder(Observable):
         for (p, _) in self.predictors:
             p.consume(word) if i is None else p.consume(word, i) # May change predictor state
     
-    def _get_non_zero_words(self, bounded_predictors, posteriors):
+    def _get_non_zero_words(self, predictor, posterior):
         """Get the set of words from the predictor posteriors which 
         have non-zero probability. This set of words is then passed
         through to the open vocabulary predictors.
@@ -342,70 +340,17 @@ class Decoder(Observable):
         This method assumes that both arguments are not empty.
 
         Args:
-            bounded_predictors (list): Tuples of (Predictor, weight)
-            bounded_posteriors (list): Corresponding posteriors.
+            bounded_predictor: (redictor
+            bounded_posterior: Corresponding posterior.
 
         Returns:
             Iterable with all words with non-zero probability.
         """
-        restricted, unrestricted = self._split_restricted_posteriors(
-            bounded_predictors, posteriors)
-        if not restricted: # No restrictions: use union of keys
-            key_sets = []
-            max_arr_length = 0
-            for posterior in unrestricted:
-                if isinstance(posterior, dict):
-                    key_sets.append(posterior.keys())
-                else:
-                    max_arr_length = max(max_arr_length, len(posterior))
-            if max_arr_length:
-                if all(all(el < max_arr_length for el in k) for k in key_sets):
-                    return range(max_arr_length)
-                key_sets.append(range(max_arr_length))
-            if len(key_sets) == 1:
-                return key_sets[0]
-            return set().union(*key_sets)
-        # Calculate the common subset of restricting posteriors
-        arr_lengths = []
-        dict_words = None
-        for posterior in restricted:
-            if isinstance(posterior, dict):
-                posterior_words = set(posterior.keys())
-                if not dict_words:
-                    dict_words = posterior_words
-                else:
-                    dict_words = dict_words & posterior_words
-                if not dict_words: 
-                    return None
-            else: # We record min and max lengths for array posteriors.
-                arr_lengths.append(len(posterior))
-        if dict_words: # Dictionary restrictions
-            if not arr_lengths:
-                return dict_words
-            min_arr_length = min(arr_lengths)
-            return [w for w in dict_words if w < min_arr_length]
-        # Array restrictions
-        return range(min(arr_lengths))
 
-    def _split_restricted_posteriors(self, predictors, posteriors):
-        """Helper method for _get_non_zero_words(). Splits the
-        given list of posteriors into unrestricting and restricting
-        ones. Restricting posteriors have UNK scores of -inf.
-        """
-        restricted = []
-        unrestricted = []
-        for idx, posterior in enumerate(posteriors):
-            (p, _) = predictors[idx]
-            if p.get_unk_probability(posterior) == NEG_INF:
-                restricted.append(posterior)
-            else:
-                unrestricted.append(posterior)
-        return restricted, unrestricted
-
+        fin_probs = np.isfinite(posterior)
+        return [i for i, b in enumerate(fin_probs) if b]
     
-    
-    
-    def apply_predictors(self, top_n=0):
+    def apply_predictors(self, hypo=None, top_n=0):
         """Get the distribution over the next word by combining the
         predictor scores.
 
@@ -418,49 +363,37 @@ class Decoder(Observable):
             contains the scores for each predictor separately 
             represented as tuples (unweighted_score, predictor_weight)
         """
+        assert hypo is not None or not self.gumbel
+        # only supports 1 predictor at the moment. Can change if need for 2 comes up
+        assert len(self.predictors) == 1
         self.apply_predictors_count += 1
+        predictor = self.predictors[0][0]
         # Get posteriors
-        posteriors = [p.predict_next() for (p, _) in self.predictors]
-        non_zero_words = self._get_non_zero_words(self.predictors,
-                                                  posteriors)
-        
-        if not non_zero_words: # Special case: no word is possible
+        posterior = predictor.predict_next()
+        posterior = utils.log_softmax(posterior, temperature=self.temperature)
+        non_zero_words = self._get_non_zero_words(predictor,
+                                                  posterior)
+        if len(non_zero_words) == 0: # Special case: no word is possible
             non_zero_words = set([utils.EOS_ID])
-        # Add unbounded predictors and unk probabilities
-        unk_probs = [p.get_unk_probability(posterior) for (p,_), posterior in zip(self.predictors, posteriors)]
-        ids, comb_posterior, _ = self.combine_posteriors(
-            non_zero_words, posteriors, unk_probs, top_n=top_n) 
+
+        if self.gumbel:
+            gumbel_full_posterior = self.gumbelify(hypo, posterior)
+            ids, posterior, original_posterior = self.combine_posteriors(
+                non_zero_words, gumbel_full_posterior, predictor.get_unk_probability(posterior),
+                top_n=top_n, original_posterior=posterior) 
+        else:
+            ids, posterior, original_posterior = self.combine_posteriors(
+                non_zero_words, posterior, predictor.get_unk_probability(posterior), top_n=top_n) 
                 
         assert self.allow_unk_in_output or not utils.UNK_ID in ids
         
-        self.notify_observers(comb_posterior, message_type = MESSAGE_TYPE_POSTERIOR)
-        return ids, comb_posterior
+        self.notify_observers(posterior, message_type = MESSAGE_TYPE_POSTERIOR)
+        return ids, posterior, original_posterior
 
 
-    def apply_predictors_with_gumbel(self, hypo, top_n=0):
-        """Get the distribution over the next word by combining the
-        predictor scores.
-
-        Args:
-            top_n (int): If positive, return only the best n words.
-        
-        Returns:
-            combined,score_breakdown: Two dicts. ``combined`` maps 
-            target word ids to the combined score, ``score_breakdown``
-            contains the scores for each predictor separately 
-            represented as tuples (unweighted_score, predictor_weight)
-        """
-        # only supports one predictor currently
-        assert len(self.predictors) == 1
-        predictor = self.predictors[0][0]
-        self.apply_predictors_count += 1
-        # Get bounded posteriors
-        bounded_posterior = predictor.predict_next() 
-        non_zero_words = self._get_non_zero_words(self.predictors,
-                                                  [bounded_posterior])
-
+    def gumbelify(self, hypo, posterior):
         vf = np.vectorize(lambda x: self.get_pos_score(hypo, x) - self.get_adjusted_score(hypo))
-        shifted_posterior = vf(bounded_posterior)
+        shifted_posterior = vf(posterior)
         shifted_posterior = utils.log_softmax(shifted_posterior)
 
         np.random.seed(seed=0)
@@ -472,20 +405,8 @@ class Decoder(Observable):
         gumbel_full_posterior = hypo.score - np.maximum(0, v) - utils.logpexp(-np.abs(v))
 
         # make sure invalid tokens still have neg inf log probability
-        gumbel_full_posterior[(bounded_posterior == utils.NEG_INF).nonzero()] == utils.NEG_INF
-        
-        if not non_zero_words: # Special case: no word is possible
-            non_zero_words = set([utils.EOS_ID])
-
-        unk_probs = [predictor.get_unk_probability(bounded_posterior)]
-        ids, posterior, shifted_posterior = self.combine_posteriors(
-            non_zero_words, [gumbel_full_posterior], unk_probs, top_n=top_n, 
-            original_posterior=bounded_posterior) 
-        
-        assert self.allow_unk_in_output or not utils.UNK_ID in ids
-
-        self.notify_observers(posterior, message_type = MESSAGE_TYPE_POSTERIOR)
-        return ids, posterior, shifted_posterior
+        gumbel_full_posterior[(posterior == utils.NEG_INF).nonzero()] == utils.NEG_INF
+        return gumbel_full_posterior
 
     
     def _expand_hypo(self, hypo, limit=0):
@@ -503,18 +424,13 @@ class Decoder(Observable):
             self.consume(hypo.word_to_consume)
             hypo.word_to_consume = None
 
-        if self.gumbel: 
-            ret = self.apply_predictors_with_gumbel(hypo, limit)
-            ids, posterior, shifted_posterior = ret
-        else:
-            ids, posterior = self.apply_predictors(limit)
-
+        ids, posterior, original_posterior = self.apply_predictors(hypo, limit)
  
         hypo.predictor_states = self.get_predictor_states()
         new_hypos = [hypo.cheap_expand(
                         trgt_word,
                         posterior[idx],
-                        base_score=shifted_posterior[idx] if self.gumbel else None
+                        base_score=original_posterior[idx] if self.gumbel else None
                         ) for idx, trgt_word in enumerate(ids)]
     
         return new_hypos
@@ -549,10 +465,9 @@ class Decoder(Observable):
     
     def _combine_posteriors_simple(self,
                                       non_zero_words,
-                                      posteriors,
-                                      unk_probs,
-                                      pred_weights=[1.0],
-                                      top_n=0,
+                                      posterior,
+                                      unk_prob,
+                                      top_n,
                                       original_posterior=None):
         """        
         Args:
@@ -561,29 +476,21 @@ class Decoder(Observable):
                         with ``predict_next()``
             unk_probs: UNK probabilities of the predictors, calculated
                        with ``get_unk_probability``
-            pred_weights (list): Predictor weights
-            top_n (int): If positive, return only top n words
         
         Returns:
             combined,score_breakdown: like in ``apply_predictors()``
         """
-        if isinstance(non_zero_words, range) and top_n > 0:
-            non_zero_words = Decoder._scale_combine_non_zero_scores(
-                len(non_zero_words),
-                posteriors,
-                unk_probs,
-                pred_weights,
-                top_n=top_n)
+        if top_n > 0:
+            non_zero_words = utils.argmax_n(posterior, top_n)
 
-        scores_func = np.vectorize(lambda x: utils.common_get(posteriors[0], x, unk_probs[0]))
+        scores_func = np.vectorize(lambda x: utils.common_get(posterior, x, unk_prob))
         scores = scores_func(non_zero_words)
 
         orig_scores = None
         if original_posterior is not None:
-            scores_func = np.vectorize(lambda x: utils.common_get(original_posterior, x, unk_probs[0]))
+            scores_func = np.vectorize(lambda x: utils.common_get(original_posterior, x, unk_prob))
             orig_scores = scores_func(non_zero_words)
 
-        assert len(non_zero_words) == len(scores) == top_n if top_n > 0 else len(non_zero_words) == len(scores)
         return non_zero_words, scores, orig_scores
 
     
@@ -651,7 +558,7 @@ class Decoder(Observable):
         self.initialize_predictors(src_sentence)
         hypo = PartialHypothesis(self.get_predictor_states())
         ind = utils.EOS_ID
-        ids, posterior = self.apply_predictors()
+        ids, posterior, _ = self.apply_predictors()
 
         hypo.score += posterior[ind] 
         hypo.score_breakdown.append(posterior[ind])

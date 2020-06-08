@@ -61,8 +61,7 @@ def get_fairseq_args(model_path, lang_pair):
 class FairseqPredictor(Predictor):
     """Predictor for using fairseq models."""
 
-    def __init__(self, model_path, user_dir, lang_pair, n_cpu_threads=-1, temperature=1.
-        ):
+    def __init__(self, model_path, user_dir, lang_pair, n_cpu_threads=-1):
         """Initializes a fairseq predictor.
 
         Args:
@@ -92,8 +91,6 @@ class FairseqPredictor(Predictor):
         self.models = self.load_models(model_path, task)
         self.model = EnsembleModel(self.models)
         self.model.eval()
-
-        self.temperature = temperature
 
 
     def load_models(self, model_path, task):
@@ -125,8 +122,7 @@ class FairseqPredictor(Predictor):
             inputs = inputs.cuda()
 
         lprobs, _  = self.model.forward_decoder(
-            inputs, self.encoder_outs, temperature=self.temperature
-        )
+            inputs, self.encoder_outs)
         lprobs[:, self.pad_id] = utils.NEG_INF
         return np.array(lprobs[0].cpu() if self.use_cuda else lprobs[0])
 

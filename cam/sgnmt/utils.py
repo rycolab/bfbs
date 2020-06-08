@@ -186,10 +186,11 @@ def logmexp(x):
 def logpexp(x):
     return numpy.log(1 + numpy.exp(x))
 
-def softmax(x):
-    return numpy.exp(log_softmax(x))
+def softmax(x, temperature=1.):
+    return numpy.exp(log_softmax(x, temperature=temperature))
 
-def log_softmax(x):
+def log_softmax(x, temperature=1.):
+    x = x/temperature
     # numerically stable log softmax
     shift_x = x - numpy.max(x)
     # mask invalid values (neg inf)

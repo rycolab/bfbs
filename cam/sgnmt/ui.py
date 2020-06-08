@@ -359,7 +359,7 @@ def get_parser():
     group.add_argument("--gumbel", action='store_true',
                         help="Add gumbel RV to make beam search effectively"
                         "random sampling")
-    group.add_argument('--fairseq_temperature', default=1., type=float, metavar='N',
+    group.add_argument('--temperature', default=1., type=float, metavar='N',
                        help='temperature for generation')
     
 

@@ -1,27 +1,6 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Implementation of the A* search strategy """
-
-
 import copy
-import logging
 import numpy as np
 import time
-import math
 
 from cam.sgnmt import utils
 from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
@@ -33,13 +12,6 @@ class SamplingDecoder(Decoder):
         """Creates a new A* decoder instance. The following values are
         fetched from `decoder_args`:
         
-            beam (int): beam width.
-            early_stopping (bool): If this is true, partial hypotheses
-                                   with score worse than the current
-                                   best complete scores are not
-                                   expanded. This applies when nbest is
-                                   larger than one and inadmissible
-                                   heuristics are used
             nbest (int): If this is set to a positive value, we do not
                          stop decoding at the first complete path, but
                          continue search until we collected this many
@@ -52,13 +24,11 @@ class SamplingDecoder(Decoder):
                                    from the configuration API.
         """
         super(SamplingDecoder, self).__init__(decoder_args)
-        assert decoder_args.fairseq_temperature >= 1.0
         self.nbest = decoder_args.nbest
-
         
     def decode(self, src_sentence):
         self.initialize_predictors(src_sentence)
-        hypos = [PartialHypothesis(self.get_predictor_states())]*self.nbest
+        hypos = [PartialHypothesis(copy.deepcopy(self.get_predictor_states())) for i in range(self.nbest)]
 
         t = 0
         while hypos and t < self.max_len:
@@ -83,8 +53,8 @@ class SamplingDecoder(Decoder):
     def _expand_hypo(self, hypo, seed=0):
 
         self.set_predictor_states(hypo.predictor_states)
-        ids, posterior = self.apply_predictors()
-        probabilites = utils.softmax(posterior)
+        ids, posterior, _ = self.apply_predictors()
+        probabilites = utils.softmax(posterior)#, temperature=self.temperature)
         next_word = self._sample(probabilites, seed)
 
         hypo.predictor_states = self.get_predictor_states()
@@ -96,13 +66,6 @@ class SamplingDecoder(Decoder):
 
     def _sample(self, posterior, seed):
         np.random.seed(seed=seed)
-        dist = np.random.multinomial(1, posterior, size=1)
-        return int(np.where(dist[0]==1)[0])
-
-
-
-
-
-
-
+        choices = range(len(posterior)) 
+        return np.random.choice(choices, p=posterior)
     
