@@ -340,7 +340,7 @@ class Decoder(Observable):
         This method assumes that both arguments are not empty.
 
         Args:
-            bounded_predictor: (redictor
+            bounded_predictor: predictor
             bounded_posterior: Corresponding posterior.
 
         Returns:
@@ -364,13 +364,16 @@ class Decoder(Observable):
             represented as tuples (unweighted_score, predictor_weight)
         """
         assert hypo is not None or not self.gumbel
-        # only supports 1 predictor at the moment. Can change if need for 2 comes up
+        # only supports 1 predictor at the moment. Can change if need for more comes up
         assert len(self.predictors) == 1
         self.apply_predictors_count += 1
         predictor = self.predictors[0][0]
         # Get posteriors
         posterior = predictor.predict_next()
         posterior = utils.log_softmax(posterior, temperature=self.temperature)
+        # numerical stability check
+        assert len(posterior) - np.count_nonzero(posterior) <= 1
+        
         non_zero_words = self._get_non_zero_words(predictor,
                                                   posterior)
         if len(non_zero_words) == 0: # Special case: no word is possible

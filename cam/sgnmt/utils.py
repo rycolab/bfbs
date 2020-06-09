@@ -302,7 +302,9 @@ def distinct_ngrams(hypos, n):
         all_ngrams = ngrams(h, n)
         total_ngrams += len(all_ngrams)
         distinct.extend(all_ngrams)
-
+    
+    if len(distinct) == 0:
+        return 0
     return float(len(set(distinct)))/len(distinct)
 
 def ngram_diversity(hypos):

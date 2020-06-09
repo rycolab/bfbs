@@ -25,6 +25,7 @@ class SamplingDecoder(Decoder):
         """
         super(SamplingDecoder, self).__init__(decoder_args)
         self.nbest = decoder_args.nbest
+        assert not self.gumbel
         
     def decode(self, src_sentence):
         self.initialize_predictors(src_sentence)
@@ -54,7 +55,7 @@ class SamplingDecoder(Decoder):
 
         self.set_predictor_states(hypo.predictor_states)
         ids, posterior, _ = self.apply_predictors()
-        probabilites = utils.softmax(posterior)#, temperature=self.temperature)
+        probabilites = utils.softmax(posterior)
         next_word = self._sample(probabilites, seed)
 
         hypo.predictor_states = self.get_predictor_states()
