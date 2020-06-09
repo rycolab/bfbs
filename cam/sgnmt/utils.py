@@ -139,7 +139,7 @@ def argmax_n(arr, n):
     if isinstance(arr, dict):
         return sorted(arr, key=arr.get, reverse=True)[:n]
     elif len(arr) <= n:
-        return range(n)
+        return range(len(arr))
     elif hasattr(arr, 'is_cuda') and arr.is_cuda:
         return numpy.argpartition(arr.cpu(), -n)[-n:]
     return numpy.argpartition(arr, -n)[-n:]
