@@ -56,11 +56,12 @@ class SamplingDecoder(Decoder):
         self.set_predictor_states(hypo.predictor_states)
         ids, posterior, _ = self.apply_predictors()
         probabilites = utils.softmax(posterior)
-        next_word = self._sample(probabilites, seed)
+        ind = self._sample(probabilites, seed)
+        next_word = ids[ind]
 
         hypo.predictor_states = self.get_predictor_states()
-        hypo.score += posterior[next_word]
-        hypo.score_breakdown.append(posterior[next_word])
+        hypo.score += posterior[ind]
+        hypo.score_breakdown.append(posterior[ind])
         hypo.trgt_sentence += [next_word]
         self.consume(next_word)
 

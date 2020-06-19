@@ -455,7 +455,7 @@ class Decoder(Observable):
                 if hypo.get_last_word() != utils.EOS_ID:
                         potential = max(self.l - len(hypo.trgt_sentence),0) 
                         current_score += self.reward_coef*potential
-        elif getattr(self, 'heuristics', False):
+        elif getattr(self, 'heuristic_search', False):
             if hypo.get_last_word() != utils.EOS_ID:
                 remaining = self.max_len - len(hypo.trgt_sentence) 
                 current_score += self.lmbda*self.epsilon*remaining

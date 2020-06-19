@@ -232,7 +232,8 @@ def get_parser():
                                  'dijkstra',
                                  'dijkstra_ts',
                                  'reference',
-                                 'sampling'],
+                                 'sampling',
+                                 'basic_swor'],
                         help="Strategy for traversing the search space which "
                         "is spanned by the predictors.\n\n"
                         "* 'greedy': Greedy decoding (similar to beam=1)\n"
@@ -347,11 +348,6 @@ def get_parser():
                         "lower bounds for the simplelendfs decoder. Each line "
                         "must be in the format <len1>:<lower-bound1> ... "
                         "<lenN>:<lower-boundN>.")
-    group.add_argument("--reward_type", default=None,
-                        choices=['bounded','max', None],
-                        help="")
-    group.add_argument("--epsilon", default=20.0, type=float,
-                        help="give positive value")
     group.add_argument("--memory_threshold_coef", default=0, type=int,
                         help="total queue size will be set to `memory_threshold_coef`"
                          "* beam size. When capacity is exceeded, the worst scoring "

@@ -38,7 +38,7 @@ class DijkstraTSDecoder(Decoder):
         self.nbest = max(1, decoder_args.nbest)
         self.beam = decoder_args.beam
         self.early_stopping = decoder_args.early_stopping
-    
+
         self.size_threshold = self.beam*decoder_args.memory_threshold_coef\
             if decoder_args.memory_threshold_coef > 0 else utils.INF
 
@@ -147,15 +147,15 @@ class DijkstraTSDecoder(Decoder):
                 return
 
     def stop(self):
-        if self.not_monotonic:
-            if not self.early_stopping and len(self.full_hypos) < self.beam:
-                return False
-            threshold = max(self.full_hypos) if self.early_stopping else min(self.full_hypos)
-            if all([threshold.total_score > self.max_pos_score(h[1]) for q in self.queues if q for h in q.a]):
-                return True
-        elif self.early_stopping:
-            return len(self.full_hypos) == min(self.beam, self.nbest)
-        elif len(self.full_hypos) == self.beam:
+        if not self.not_monotonic:
+            return len(self.full_hypos) == (min(self.beam, self.nbest) if self.early_stopping else self.beam)
+        
+        if not self.early_stopping and len(self.full_hypos) < self.beam:
+            return False
+        threshold = max(self.full_hypos)  
+        if not self.early_stopping:
+            threshold = sorted(self.full_hypos, reverse=True)[self.beam]
+        if all([threshold.total_score > self.max_pos_score(h[1]) for q in self.queues if q for h in q.a]):
             return True
         return False
 

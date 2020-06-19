@@ -29,6 +29,8 @@ from shutil import copyfile
 import logging
 import os
 import sys
+from bisect import bisect_left 
+from functools import reduce  
 
 try:
     import pywrapfst as fst
@@ -196,6 +198,18 @@ def log_softmax(x, temperature=1.):
     # mask invalid values (neg inf)
     b = (~numpy.ma.masked_invalid(shift_x).mask).astype(int)
     return shift_x - logsumexp(shift_x, b=b)
+
+  
+def binary_search(a, x): 
+    i = bisect_left(a, x) 
+    if i != len(a) and a[i] == x: 
+        return i 
+    else: 
+        return -1
+
+
+def prod(iterable):
+    return reduce(operator.mul, iterable, 1)
 
 # Functions for common access to numpy arrays, lists, and dicts
 def common_viewkeys(obj):
