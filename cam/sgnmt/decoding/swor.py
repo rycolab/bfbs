@@ -9,15 +9,11 @@ from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
 class BasicSworDecoder(Decoder):
     
     def __init__(self, decoder_args):
-        """Creates a new A* decoder instance. The following values are
+        """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
         
-            nbest (int): If this is set to a positive value, we do not
-                         stop decoding at the first complete path, but
-                         continue search until we collected this many
-                         complete hypothesis. With an admissible
-                         heuristic, this will yield an exact n-best
-                         list.
+            nbest (int): number of desired samples. 
+            temperature (float): temperature for shifting probability distributions
         
         Args:
             decoder_args (object): Decoder configuration passed through
@@ -36,13 +32,12 @@ class BasicSworDecoder(Decoder):
         while len(self.full_hypos) < self.nbest:
             self.reset_predictors(src_sentence)
             hypo = PartialHypothesis(self.get_predictor_states())
-            #self.set_predictor_states(hypo.predictor_states)
             while hypo.get_last_word() != utils.EOS_ID and len(hypo) < self.max_len:
                 self._expand_hypo(hypo, seed=len(self.full_hypos))
             hypo.score = self.get_adjusted_score(hypo)
             self.add_full_hypo(hypo.generate_full_hypothesis())
     
-        return self.full_hypos#self.get_full_hypos_sorted() 
+        return self.full_hypos
 
     
     def _expand_hypo(self, hypo, seed=0):

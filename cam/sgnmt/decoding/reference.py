@@ -11,7 +11,7 @@ from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
 class ReferenceDecoder(Decoder):
     
     def __init__(self, decoder_args):
-        """Creates a new A* decoder instance. The following values are
+        """Creates a new reference decoder instance. The following values are
         fetched from `decoder_args`:
         
         Args:
