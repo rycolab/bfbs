@@ -182,11 +182,10 @@ def argmax(arr):
         return numpy.argmax(arr)
 
 def logmexp(x):
-    with numpy.errstate(divide='ignore'):
-        return numpy.log(1 - numpy.exp(x))
+    return numpy.log1p(-numpy.exp(x))
    
 def logpexp(x):
-    return numpy.log(1 + numpy.exp(x))
+    return numpy.log1p(numpy.exp(x))
 
 def softmax(x, temperature=1.):
     return numpy.exp(log_softmax(x, temperature=temperature))
@@ -199,6 +198,25 @@ def log_softmax(x, temperature=1.):
     b = (~numpy.ma.masked_invalid(shift_x).mask).astype(int)
     return shift_x - logsumexp(shift_x, b=b)
 
+def log_add(a, b):
+    # takes two log probabilities; equivalent to adding probabilities in log space
+    if a == NEG_INF or b == NEG_INF:
+        return max(a, b)
+    smaller = min(a,b)
+    larger = max(a,b)
+    return larger + numpy.log(logpexp(smaller - larger))
+
+def log_minus(a, b):
+    # takes two log probabilities; equivalent to subtracting probabilities in log space
+    assert b <= a
+    if a == b:
+        return NEG_INF
+    if b == NEG_INF:
+        return a
+    comp = a + numpy.log(logmexp(-(a-b)))
+    return comp if not numpy.isnan(comp) else NEG_INF
+
+vectorized_log_minus = numpy.vectorize(log_minus)
   
 def binary_search(a, x): 
     i = bisect_left(a, x) 
@@ -207,9 +225,14 @@ def binary_search(a, x):
     else: 
         return -1
 
+def gumbel_max_sample(x, seed=0):
+    numpy.random.seed(seed=seed)
+    z = numpy.random.gumbel(loc=0, scale=1, size=x.shape)
+    return (x + z).argmax()
+
 
 def prod(iterable):
-    return reduce(operator.mul, iterable, 1)
+    return reduce(operator.mul, iterable, 1.0)
 
 # Functions for common access to numpy arrays, lists, and dicts
 def common_viewkeys(obj):

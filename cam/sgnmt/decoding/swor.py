@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import copy
 from collections import defaultdict
 
 from cam.sgnmt import utils
@@ -25,55 +26,57 @@ class BasicSworDecoder(Decoder):
         assert not self.gumbel
         
     def decode(self, src_sentence):
-
-        self.ids = defaultdict(lambda: defaultdict(float))
-        self.initialize_predictors(src_sentence)
+        self.src_sentence = src_sentence
+        self.initialize_predictors(self.src_sentence)
 
         while len(self.full_hypos) < self.nbest:
             self.reset_predictors(src_sentence)
             hypo = PartialHypothesis(self.get_predictor_states())
+            self.start = True
             while hypo.get_last_word() != utils.EOS_ID and len(hypo) < self.max_len:
                 self._expand_hypo(hypo, seed=len(self.full_hypos))
-            hypo.score = self.get_adjusted_score(hypo)
-            self.add_full_hypo(hypo.generate_full_hypothesis())
-    
+            self._add_full_hypo(hypo.generate_full_hypothesis())
+
+        prob = sum([np.exp(sum(h.score_breakdown)) for h in self.full_hypos])
+        print(len(self.full_hypos), "sentences covering", prob, "probability")
         return self.full_hypos
 
     
     def _expand_hypo(self, hypo, seed=0):
+        hash_rep = tuple(hypo.trgt_sentence)
+        if hash_rep in self.dists:
+            ids, lprobabilities, adjusted_lprobabilities = self.dists[hash_rep].values()
+            hypo.predictor_states = self.dists[hash_rep].predictor_states
+        else:
+            if self.start:
+                # prefix has no longer previously been seen. One deep copy to get started
+                hypo.predictor_states = copy.deepcopy(hypo.predictor_states)
+                self.set_predictor_states(hypo.predictor_states)
+                self.start = False
+            if hypo.word_to_consume is not None:
+                self.consume(hypo.word_to_consume)
+                hypo.word_to_consume = None
+            ids, posterior, _ = self.apply_predictors()
+            lprobabilities = adjusted_lprobabilities = utils.log_softmax(posterior, self.temperature)
+            assert not np.any(np.isnan(lprobabilities))
+            self.dists[hash_rep] = Dist(ids, lprobabilities, self.get_predictor_states())
 
-        ids, posterior, _ = self.apply_predictors()
-        probabilities = utils.softmax(posterior, temperature=self.temperature)
-        adjusted_probabilities = self.adjust_probabilities(probabilities, hypo, ids)
-
-        ind = self._sample(adjusted_probabilities, seed)
+        ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
-        hypo.score += np.log(adjusted_probabilities[ind])
-        hypo.score_breakdown.append(probabilities[ind])
+        hypo.score += adjusted_lprobabilities[ind]
+        hypo.score_breakdown.append(lprobabilities[ind])
         hypo.trgt_sentence += [next_word]
-        self.consume(next_word)
+        hypo.word_to_consume = next_word
+       
 
-
-    def _sample(self, posterior, seed):
-        np.random.seed(seed=seed)
-        choices = range(len(posterior)) 
-        return np.random.choice(choices, p=posterior)
-
-    def add_full_hypo(self, hypo):
-        for i in range(len(hypo)):
-            prefix = tuple(hypo.trgt_sentence[:i])
-            self.ids[prefix][hypo.trgt_sentence[i]] += utils.prod(hypo.score_breakdown[i:])
+    def _add_full_hypo(self, hypo):
         super().add_full_hypo(hypo)
-
-    def adjust_probabilities(self, probabilities, hypo, ids):
+        for i in range(len(hypo)):
+            hash_rep = tuple(hypo.trgt_sentence[:i])
+            self.dists[hash_rep].adjust(hypo.trgt_sentence[i], sum(hypo.score_breakdown[i:]))
+            
         
-        if tuple(hypo.trgt_sentence) in self.ids:
-            for k,v in self.ids[tuple(hypo.trgt_sentence)].items():
-                ind = utils.binary_search(ids, k)
-                probabilities[ind] -= v
-        return probabilities/probabilities.sum()
-
     def reset_predictors(self, src_sentence):
         for idx, (p, _) in enumerate(self.predictors):
             p.set_current_sen_id(self.current_sen_id)
@@ -81,5 +84,78 @@ class BasicSworDecoder(Decoder):
         for h in self.heuristics:
             h.initialize(src_sentence)
 
+    def initialize_predictors(self, hypo):
+        self.dists = {}
+        super().initialize_predictors(hypo)
+
+
+class MemEfficientSworDecoder(BasicSworDecoder):
+    
+    def __init__(self, decoder_args):
+        """Creates a new SWOR decoder instance. The following values are
+        fetched from `decoder_args`:
+        
+            nbest (int): number of desired samples. 
+            temperature (float): temperature for shifting probability distributions
+        
+        Args:
+            decoder_args (object): Decoder configuration passed through
+                                   from the configuration API.
+        """
+        super(MemEfficientSworDecoder, self).__init__(decoder_args)
+
+    
+    def _expand_hypo(self, hypo, seed=0):
+
+        ids, posterior, _ = self.apply_predictors()
+        lprobabilities = utils.log_softmax(posterior, self.temperature)
+        # assert not np.any(np.isnan(lprobabilities))
+        adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, hypo, ids)
+
+        ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
+        next_word = ids[ind]
+
+        hypo.score += adjusted_lprobabilities[ind]
+        hypo.score_breakdown.append(lprobabilities[ind])
+        hypo.trgt_sentence += [next_word]
+        self.consume(next_word)
+
+
+    def _add_full_hypo(self, hypo):
+        super().add_full_hypo(hypo)
+        for i in range(len(hypo)):
+            prefix = tuple(hypo.trgt_sentence[:i])
+            val = sum(hypo.score_breakdown[i:])
+            self.ids[prefix][hypo.trgt_sentence[i]] = utils.log_add(val, self.ids[prefix][hypo.trgt_sentence[i]])
+        
+
+    def adjust_probabilities(self, lprobabilities, hypo, ids):
+        lprobabilities = np.copy(lprobabilities)
+        hash_rep = tuple(hypo.trgt_sentence)
+        for k, val in self.ids[hash_rep].items():
+            ind = utils.binary_search(ids, k)
+            lprobabilities[ind] = utils.log_minus(lprobabilities[ind], val)
+        return lprobabilities
+
+    def initialize_predictors(self, hypo):
+        self.ids = defaultdict(lambda: defaultdict(lambda: utils.NEG_INF))
+        super().initialize_predictors(hypo)
+
+
+class Dist(object):
+
+    def __init__(self, ids, lprobabilities, predictor_states):
+        self.ids = ids
+        self.lprobabilities = lprobabilities
+        self.adjustments = np.full_like(lprobabilities, utils.NEG_INF, dtype=np.float64)
+        self.predictor_states = copy.deepcopy(predictor_states)
+
+    def adjust(self, k, val):
+        ind = utils.binary_search(self.ids, k)
+        self.adjustments[ind] = utils.log_add(self.adjustments[ind], val)
+        
+    def values(self):
+        adjusted_lprobabilities = utils.vectorized_log_minus(self.lprobabilities, self.adjustments)
+        return self.ids, self.lprobabilities, adjusted_lprobabilities
 
     

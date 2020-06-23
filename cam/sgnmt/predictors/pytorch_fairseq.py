@@ -124,7 +124,7 @@ class FairseqPredictor(Predictor):
         lprobs, _  = self.model.forward_decoder(
             inputs, self.encoder_outs)
         lprobs[:, self.pad_id] = utils.NEG_INF
-        return np.array(lprobs[0].cpu() if self.use_cuda else lprobs[0])
+        return np.array(lprobs[0].cpu() if self.use_cuda else lprobs[0], dtype=np.float64)
 
     
     def initialize(self, src_sentence):
@@ -169,8 +169,7 @@ class FairseqPredictor(Predictor):
     
     def set_state(self, state):
         """The predictor state is the complete history."""
-        consumed, inc_states = state
-        self.consumed = copy.copy(consumed)
+        self.consumed, inc_states = state
         for model, inc_state in zip(self.models, inc_states):
             self.model.incremental_states[model] = inc_state
 

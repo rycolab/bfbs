@@ -41,7 +41,7 @@ from cam.sgnmt.decoding.dijkstra import DijkstraDecoder
 from cam.sgnmt.decoding.dijkstra_time_sync import DijkstraTSDecoder
 from cam.sgnmt.decoding.reference import ReferenceDecoder
 from cam.sgnmt.decoding.sampling import SamplingDecoder
-from cam.sgnmt.decoding.swor import BasicSworDecoder
+from cam.sgnmt.decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
 from cam.sgnmt.decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
@@ -197,6 +197,8 @@ def create_decoder():
             decoder = SamplingDecoder(args)
         elif args.decoder == "basic_swor":
             decoder = BasicSworDecoder(args)
+        elif args.decoder == "mem_swor":
+            decoder = MemEfficientSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
@@ -416,6 +418,7 @@ def do_decode(decoder,
             
             hypos = _postprocess_complete_hypos(hypos)
             logged_hypo = hypos[0]
+            #for logged_hypo in hypos:
             logging.info("Decoded (ID: %d): %s" % (
                         sen_idx+1,
                         io.decode(logged_hypo.trgt_sentence)))
@@ -427,6 +430,7 @@ def do_decode(decoder,
                                         decoder.apply_predictors_count,
                                         time.time() - start_hypo_time,
                                         perplexity(logged_hypo)))
+
             if score_output_handler:
                 try:
                     score_output_handler.write_score(logged_hypo.score_breakdown)
