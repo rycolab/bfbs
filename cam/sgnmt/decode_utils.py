@@ -350,11 +350,6 @@ def _postprocess_complete_hypos(hypos):
     return hypos
 
 
-def perplexity(hypo):
-    score = sum([s for s in hypo.score_breakdown])
-    return 2**(-score/len(hypo.score_breakdown))
-
-
 def _generate_dummy_hypo(predictors):
     return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
@@ -362,7 +357,8 @@ def _generate_dummy_hypo(predictors):
 def do_decode(decoder, 
               output_handlers, 
               src_sentences,
-              trgt_sentences=None):
+              trgt_sentences=None,
+              num_log=1):
     """This method contains the main decoding loop. It iterates through
     ``src_sentences`` and applies ``decoder.decode()`` to each of them.
     At the end, it calls the output handlers to create output files.
@@ -417,19 +413,19 @@ def do_decode(decoder,
                 hypos = [_generate_dummy_hypo(decoder.predictors)]
             
             hypos = _postprocess_complete_hypos(hypos)
-            logged_hypo = hypos[0]
-            #for logged_hypo in hypos:
-            logging.info("Decoded (ID: %d): %s" % (
-                        sen_idx+1,
-                        io.decode(logged_hypo.trgt_sentence)))
-            logging.info("Stats (ID: %d): score=%f "
-                         "num_expansions=%d "
-                         "time=%.2f " 
-                         "perplexity=%.2f"% (sen_idx+1,
-                                        logged_hypo.total_score,
-                                        decoder.apply_predictors_count,
-                                        time.time() - start_hypo_time,
-                                        perplexity(logged_hypo)))
+            
+            for logged_hypo in hypos[:num_log]:
+                logging.info("Decoded (ID: %d): %s" % (
+                            sen_idx+1,
+                            io.decode(logged_hypo.trgt_sentence)))
+                logging.info("Stats (ID: %d): score=%f "
+                             "num_expansions=%d "
+                             "time=%.2f " 
+                             "perplexity=%.2f"% (sen_idx+1,
+                                            logged_hypo.total_score,
+                                            decoder.apply_predictors_count,
+                                            time.time() - start_hypo_time,
+                                            utils.perplexity(logged_hypo.score_breakdown)))
 
             if score_output_handler:
                 try:

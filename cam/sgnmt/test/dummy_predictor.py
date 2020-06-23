@@ -47,7 +47,7 @@ class DummyPredictor(Predictor):
     def initialize(self, src_sentence):
         """Initialize source tensors, reset consumed."""
         self.src = src_sentence
-        self.consumed =  [utils.GO_ID]
+        self.consumed =  []
    
     def consume(self, word):
         """Append ``word`` to the current history."""

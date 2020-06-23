@@ -230,6 +230,10 @@ def gumbel_max_sample(x, seed=0):
     z = numpy.random.gumbel(loc=0, scale=1, size=x.shape)
     return (x + z).argmax()
 
+def perplexity(arr):
+    score = sum([s for s in arr])
+    return 2**(-score/len(arr))
+
 
 def prod(iterable):
     return reduce(operator.mul, iterable, 1.0)

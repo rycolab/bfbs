@@ -163,11 +163,6 @@ def create_decoder():
         sys.exit("Could not initialize decoder.")
     add_predictors(decoder)
     return decoder
-    
-
-def perplexity(hypo):
-    score = sum([s for s in hypo.score_breakdown])
-    return 2**(-score/len(hypo.score_breakdown))
 
 
 def _generate_dummy_hypo(predictors):
@@ -177,7 +172,8 @@ def _generate_dummy_hypo(predictors):
 def do_decode(decoder, 
               output_handlers, 
               src_sentences,
-              trgt_sentences=None):
+              trgt_sentences=None,
+              num_log=1):
     """This method contains the main decoding loop. It iterates through
     ``src_sentences`` and applies ``decoder.decode()`` to each of them.
     At the end, it calls the output handlers to create output files.
@@ -217,23 +213,23 @@ def do_decode(decoder,
                                     time.time() - start_hypo_time))
             hypos = [_generate_dummy_hypo(decoder.predictors)]
         
-        logged_hypo = hypos[0]
-        logging.info("Decoded (ID: %d): %s" % (
-                sen_idx+1,
-                logged_hypo.trgt_sentence))
-        logging.info("Stats (ID: %d): score=%f "
-                     "num_expansions=%d "
-                     "time=%.2f " 
-                     "perplexity=%.2f"% (sen_idx+1,
-                                    logged_hypo.total_score,
-                                    decoder.apply_predictors_count,
-                                    time.time() - start_hypo_time,
-                                    perplexity(logged_hypo)))
+        for logged_hypo in hypos[:num_log]:
+            logging.info("Decoded (ID: %d): %s" % (
+                    sen_idx+1,
+                    logged_hypo.trgt_sentence))
+            logging.info("Stats (ID: %d): score=%f "
+                         "num_expansions=%d "
+                         "time=%.2f " 
+                         "perplexity=%.2f"% (sen_idx+1,
+                                        logged_hypo.total_score,
+                                        decoder.apply_predictors_count,
+                                        time.time() - start_hypo_time,
+                                        utils.perplexity(logged_hypo.score_breakdown)))
 
            
 
 args = get_args()
 base_init(args)
 decoder = create_decoder()
-do_decode(decoder, [], False)
+do_decode(decoder, [], False, num_log=args.num_log)
 
