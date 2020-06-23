@@ -413,7 +413,6 @@ def do_decode(decoder,
                 hypos = [_generate_dummy_hypo(decoder.predictors)]
             
             hypos = _postprocess_complete_hypos(hypos)
-            
             for logged_hypo in hypos[:num_log]:
                 logging.info("Decoded (ID: %d): %s" % (
                             sen_idx+1,
@@ -426,6 +425,9 @@ def do_decode(decoder,
                                             decoder.apply_predictors_count,
                                             time.time() - start_hypo_time,
                                             utils.perplexity(logged_hypo.score_breakdown)))
+
+            # print([l.total_score for l in hypos])
+            # print([sum(l.score_breakdown) for l in hypos])
 
             if score_output_handler:
                 try:

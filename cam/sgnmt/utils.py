@@ -22,6 +22,7 @@ quirks Python sometimes has.
 
 from abc import abstractmethod
 import numpy
+from numpy import log, log1p, exp, expm1, inf, nan
 import operator
 from scipy.special import logsumexp, softmax
 from subprocess import call
@@ -57,10 +58,10 @@ NOTAPPLICABLE_ID = 3
 """Reserved word ID which is currently not used. """
 
 
-NEG_INF = float("-inf")
+NEG_INF = -numpy.inf
 
 
-INF = float("inf")
+INF = numpy.inf
 
 
 EPS_P = 0.00001
@@ -181,11 +182,94 @@ def argmax(arr):
     else:
         return numpy.argmax(arr)
 
-def logmexp(x):
-    return numpy.log1p(-numpy.exp(x))
-   
-def logpexp(x):
-    return numpy.log1p(numpy.exp(x))
+
+def logsigmoid(x):
+    """
+    log(sigmoid(x)) = -log(1+exp(-x)) = -log1pexp(-x)
+    """
+    return -log1pexp(-x)
+
+
+def log1pexp(x):
+    """
+    Numerically stable implementation of log(1+exp(x)) aka softmax(0,x).
+
+    -log1pexp(-x) is log(sigmoid(x))
+
+    Source:
+    http://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
+    """
+    if x <= -37:
+        return exp(x)
+    elif -37 <= x <= 18:
+        return log1p(exp(x))
+    elif 18 < x <= 33.3:
+        return x + exp(-x)
+    else:
+        return x
+
+
+def log1mexp(x):
+    """
+    Numerically stable implementation of log(1-exp(x))
+
+    Note: function is finite for x < 0.
+
+    Source:
+    http://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
+    """
+    if x >= 0:
+        return nan
+    else:
+        a = abs(x)
+        if 0 < a <= 0.693:
+            return log(-expm1(-a))
+        else:
+            return log1p(-exp(-a))
+
+
+def log_add(x, y):
+    # implementation: need separate checks for inf because inf-inf=nan.
+    if x == NEG_INF:
+        return y
+    elif y == NEG_INF:
+        return x
+    else:
+        if y <= x:
+            d = y-x
+            r = x
+        else:
+            d = x-y
+            r = y
+        return r + log1pexp(d)
+
+
+def log_minus(x, y):
+    if x == y:
+        return NEG_INF
+    elif x < y:
+        return nan
+    else:
+        return x + log1mexp(y-x)
+
+def log_add_old(a, b):
+    # takes two log probabilities; equivalent to adding probabilities in log space
+    if a == NEG_INF or b == NEG_INF:
+        return max(a, b)
+    smaller = min(a,b)
+    larger = max(a,b)
+    return larger + log1pexp(smaller - larger)
+
+def log_minus_old(a, b):
+    # takes two log probabilities; equivalent to subtracting probabilities in log space
+    assert b <= a
+    if a == b:
+        return NEG_INF
+    if b == NEG_INF:
+        return a
+    comp = a + log1mexp(-(a-b))
+    return comp if not numpy.isnan(comp) else NEG_INF
+
 
 def softmax(x, temperature=1.):
     return numpy.exp(log_softmax(x, temperature=temperature))
@@ -198,24 +282,6 @@ def log_softmax(x, temperature=1.):
     b = (~numpy.ma.masked_invalid(shift_x).mask).astype(int)
     return shift_x - logsumexp(shift_x, b=b)
 
-def log_add(a, b):
-    # takes two log probabilities; equivalent to adding probabilities in log space
-    if a == NEG_INF or b == NEG_INF:
-        return max(a, b)
-    smaller = min(a,b)
-    larger = max(a,b)
-    return larger + logpexp(smaller - larger)
-
-def log_minus(a, b):
-    # takes two log probabilities; equivalent to subtracting probabilities in log space
-    assert b <= a
-    if a == b:
-        return NEG_INF
-    if b == NEG_INF:
-        return a
-    return a + logmexp(-(a-b))
-
-vectorized_log_minus = numpy.vectorize(log_minus)
   
 def binary_search(a, x): 
     i = bisect_left(a, x) 
@@ -352,6 +418,26 @@ def ngram_diversity(hypos):
     return sum(ds)/4.
 
 
+
+def test():
+    from arsenal.maths import assert_equal
+
+    for a,b in numpy.random.uniform(0, 10, size=(100, 2)):
+
+        if a < b:
+            a, b = b, a
+
+        want = log(a-b)
+        assert_equal(want, log_minus(log(a), log(b)), 'log sub timv')
+        assert_equal(want, log_minus_old(log(a), log(b)), 'log sub clara')
+
+        want = log(a+b)
+        assert_equal(want, log_add(log(a), log(b)), 'log add timv')
+        assert_equal(want, log_add_old(log(a), log(b)), 'log add clara')
+
+
+if __name__ == '__main__':
+    test()
 
 MESSAGE_TYPE_DEFAULT = 1
 """Default message type for observer messages """
