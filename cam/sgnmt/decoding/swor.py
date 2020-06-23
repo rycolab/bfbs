@@ -58,7 +58,7 @@ class BasicSworDecoder(Decoder):
                 hypo.word_to_consume = None
             ids, posterior, _ = self.apply_predictors()
             lprobabilities = adjusted_lprobabilities = utils.log_softmax(posterior, self.temperature)
-            assert not np.any(np.isnan(lprobabilities))
+            # assert not np.any(np.isnan(lprobabilities))
             self.dists[hash_rep] = Dist(ids, lprobabilities, self.get_predictor_states())
 
         ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)

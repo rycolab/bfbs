@@ -43,6 +43,7 @@ from cam.sgnmt.decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
 from cam.sgnmt.decoding.greedy import GreedyDecoder
+from cam.sgnmt.decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
 from cam.sgnmt.output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
@@ -146,6 +147,10 @@ def create_decoder():
             decoder = ReferenceDecoder(args)
         elif args.decoder == "sampling":
             decoder = SamplingDecoder(args)
+        elif args.decoder == "basic_swor":
+            decoder = BasicSworDecoder(args)
+        elif args.decoder == "mem_swor":
+            decoder = MemEfficientSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
