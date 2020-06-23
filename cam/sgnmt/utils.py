@@ -204,7 +204,7 @@ def log_add(a, b):
         return max(a, b)
     smaller = min(a,b)
     larger = max(a,b)
-    return larger + numpy.log(logpexp(smaller - larger))
+    return larger + logpexp(smaller - larger)
 
 def log_minus(a, b):
     # takes two log probabilities; equivalent to subtracting probabilities in log space
@@ -213,8 +213,7 @@ def log_minus(a, b):
         return NEG_INF
     if b == NEG_INF:
         return a
-    comp = a + numpy.log(logmexp(-(a-b)))
-    return comp if not numpy.isnan(comp) else NEG_INF
+    return a + logmexp(-(a-b))
 
 vectorized_log_minus = numpy.vectorize(log_minus)
   
