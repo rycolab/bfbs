@@ -404,8 +404,8 @@ class Decoder(Observable):
         gumbel_posterior = shifted_posterior + gumbels + hypo.base_score
         Z = np.max(gumbel_posterior)
 
-        v = hypo.score - gumbel_posterior + utils.logmexp(gumbel_posterior - Z)
-        gumbel_full_posterior = hypo.score - np.maximum(0, v) - utils.logpexp(-np.abs(v))
+        v = hypo.score - gumbel_posterior + utils.log1mexp(gumbel_posterior - Z)
+        gumbel_full_posterior = hypo.score - np.maximum(0, v) - utils.log1pexp(-np.abs(v))
 
         # make sure invalid tokens still have neg inf log probability
         gumbel_full_posterior[(posterior == utils.NEG_INF).nonzero()] == utils.NEG_INF

@@ -71,6 +71,7 @@ class BasicSworDecoder(Decoder):
        
 
     def _add_full_hypo(self, hypo):
+        assert len(hypo.trgt_sentence) == len(hypo.score_breakdown)
         super().add_full_hypo(hypo)
         for i in range(len(hypo)):
             hash_rep = tuple(hypo.trgt_sentence[:i])
@@ -109,7 +110,6 @@ class MemEfficientSworDecoder(BasicSworDecoder):
 
         ids, posterior, _ = self.apply_predictors()
         lprobabilities = utils.log_softmax(posterior, self.temperature)
-        # assert not np.any(np.isnan(lprobabilities))
         adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, hypo, ids)
 
         ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
@@ -122,6 +122,7 @@ class MemEfficientSworDecoder(BasicSworDecoder):
 
 
     def _add_full_hypo(self, hypo):
+        assert len(hypo.trgt_sentence) == len(hypo.score_breakdown)
         super().add_full_hypo(hypo)
         for i in range(len(hypo)):
             prefix = tuple(hypo.trgt_sentence[:i])
@@ -148,11 +149,13 @@ class Dist(object):
         self.ids = ids
         self.lprobabilities = lprobabilities
         self.adjustments = np.full_like(lprobabilities, utils.NEG_INF, dtype=np.float64)
+        #self.adjusted_lprobabilities = np.copy(lprobabilities)
         self.predictor_states = copy.deepcopy(predictor_states)
 
     def adjust(self, k, val):
         ind = utils.binary_search(self.ids, k)
         self.adjustments[ind] = utils.log_add(self.adjustments[ind], val)
+        #self.adjusted_lprobabilities[ind] = utils.log_minus(self.adjusted_lprobabilities[ind], val)        
         
     def values(self):
         adjusted_lprobabilities = utils.vectorized_log_minus(self.lprobabilities, self.adjustments)

@@ -61,6 +61,9 @@ NOTAPPLICABLE_ID = 3
 NEG_INF = -numpy.inf
 
 
+MACHINE_EPS = numpy.finfo(float).eps
+
+
 INF = numpy.inf
 
 
@@ -245,12 +248,14 @@ def log_add(x, y):
 
 
 def log_minus(x, y):
-    if x == y:
+    if y - x > MACHINE_EPS:
+        logging.warn("Using function log_minus for invalid values")
+    if x <= y:
         return NEG_INF
-    elif x < y:
-        return nan
     else:
         return x + log1mexp(y-x)
+
+vectorized_log_minus = numpy.vectorize(log_minus)
 
 def log_add_old(a, b):
     # takes two log probabilities; equivalent to adding probabilities in log space
