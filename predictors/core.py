@@ -20,8 +20,8 @@ for bounded and unbounded vocabulary predictors.
 
 from abc import abstractmethod
 
-from cam.sgnmt import utils
-from cam.sgnmt.utils import Observer, NEG_INF, MESSAGE_TYPE_DEFAULT
+import utils
+from utils import Observer, NEG_INF, MESSAGE_TYPE_DEFAULT
 
 
 class Predictor(Observer):

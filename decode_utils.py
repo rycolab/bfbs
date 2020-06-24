@@ -31,22 +31,22 @@ import traceback
 import os
 import uuid
 
-from cam.sgnmt import ui
-from cam.sgnmt import io
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.astar import AstarDecoder
-from cam.sgnmt.decoding.beam import BeamDecoder
-from cam.sgnmt.decoding.core import Hypothesis
-from cam.sgnmt.decoding.dijkstra import DijkstraDecoder
-from cam.sgnmt.decoding.dijkstra_time_sync import DijkstraTSDecoder
-from cam.sgnmt.decoding.reference import ReferenceDecoder
-from cam.sgnmt.decoding.sampling import SamplingDecoder
-from cam.sgnmt.decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
-from cam.sgnmt.decoding.dfs import DFSDecoder, \
+import ui
+import io_utils
+import utils
+from decoding.astar import AstarDecoder
+from decoding.beam import BeamDecoder
+from decoding.core import Hypothesis
+from decoding.dijkstra import DijkstraDecoder
+from decoding.dijkstra_time_sync import DijkstraTSDecoder
+from decoding.reference import ReferenceDecoder
+from decoding.sampling import SamplingDecoder
+from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
+from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
-from cam.sgnmt.decoding.greedy import GreedyDecoder
-from cam.sgnmt.output import TextOutputHandler, \
+from decoding.greedy import GreedyDecoder
+from output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
                              NgramOutputHandler, \
@@ -55,7 +55,7 @@ from cam.sgnmt.output import TextOutputHandler, \
                              StandardFSTOutputHandler, \
                              ScoreOutputHandler
 
-from cam.sgnmt.predictors.pytorch_fairseq import FairseqPredictor
+from predictors.pytorch_fairseq import FairseqPredictor
 
 
 args = None
@@ -394,13 +394,13 @@ def do_decode(decoder,
             if len(src.split()) > 1000:
                 print("Skipping ID", str(sen_idx), ". Too long...")
                 continue
-            src_print = io.src_sentence(src)
+            src_print = io_utils.src_sentence(src)
             logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, src_print))
-            src = io.encode(src)
+            src = io_utils.encode(src)
             start_hypo_time = time.time()
             decoder.apply_predictors_count = 0
             if trgt_sentences:
-                hypos = decoder.decode(src, io.encode_trg(trgt_sentences[sen_idx]))
+                hypos = decoder.decode(src, io_utils.encode_trg(trgt_sentences[sen_idx]))
             else:
                 hypos = decoder.decode(src)
             if not hypos:
@@ -416,7 +416,7 @@ def do_decode(decoder,
             for logged_hypo in hypos[:num_log]:
                 logging.info("Decoded (ID: %d): %s" % (
                             sen_idx+1,
-                            io.decode(logged_hypo.trgt_sentence)))
+                            io_utils.decode(logged_hypo.trgt_sentence)))
                 logging.info("Stats (ID: %d): score=%f "
                              "num_expansions=%d "
                              "time=%.2f " 
@@ -437,7 +437,7 @@ def do_decode(decoder,
                                 % (sys.exc_info()[0], e))
 
             if decoder.nbest > 1:
-                diversity_score = utils.ngram_diversity([io.decode(h.trgt_sentence) for h in hypos])
+                diversity_score = utils.ngram_diversity([io_utils.decode(h.trgt_sentence) for h in hypos])
                 logging.info("Diversity: score=%f "
                           % (diversity_score))
                 diversity_metrics.append(diversity_score)

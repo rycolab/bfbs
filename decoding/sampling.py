@@ -2,8 +2,8 @@ import copy
 import numpy as np
 import time
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
+import utils
+from decoding.core import Decoder, PartialHypothesis
 
 
 class SamplingDecoder(Decoder):

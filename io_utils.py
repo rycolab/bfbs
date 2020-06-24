@@ -22,7 +22,7 @@ representations, and output files also contain indexed sentences.
 """
 
 import logging
-from cam.sgnmt import utils
+import utils
 import codecs
 import re
 import os

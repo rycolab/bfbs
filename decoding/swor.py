@@ -3,8 +3,8 @@ import time
 import copy
 from collections import defaultdict
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
+import utils
+from decoding.core import Decoder, PartialHypothesis
 
 
 class BasicSworDecoder(Decoder):

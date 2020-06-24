@@ -16,8 +16,8 @@
 
 """Implementation of the greedy search strategy """
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, Hypothesis
+import utils
+from decoding.core import Decoder, Hypothesis
 import logging
 
 

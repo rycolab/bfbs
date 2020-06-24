@@ -22,10 +22,10 @@ in the ``core`` module.
 import copy
 import logging
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Heuristic, Decoder
-from cam.sgnmt.decoding.greedy import GreedyDecoder
-from cam.sgnmt.utils import MESSAGE_TYPE_DEFAULT
+import utils
+from decoding.core import Heuristic, Decoder
+from decoding.greedy import GreedyDecoder
+from utils import MESSAGE_TYPE_DEFAULT
 
 
 class PredictorHeuristic(Heuristic):

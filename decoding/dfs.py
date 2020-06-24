@@ -22,8 +22,8 @@ import operator
 import math
 import numpy as np
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
+import utils
+from decoding.core import Decoder, PartialHypothesis
 
 
 class DFSDecoder(Decoder):

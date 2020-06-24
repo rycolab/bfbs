@@ -4,8 +4,8 @@ import copy
 import logging
 import time
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
+import utils
+from decoding.core import Decoder, PartialHypothesis
 import numpy as np
 
 

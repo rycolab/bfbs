@@ -1,8 +1,8 @@
 import logging
 import os
 
-from cam.sgnmt import utils
-from cam.sgnmt.predictors.core import Predictor
+import utils
+from predictors.core import Predictor
 
 import numpy as np
 import copy

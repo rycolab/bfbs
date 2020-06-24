@@ -25,8 +25,8 @@ from abc import abstractmethod
 import copy
 import math
 
-from cam.sgnmt import utils
-from cam.sgnmt.utils import Observable, Observer, MESSAGE_TYPE_DEFAULT, \
+import utils
+from utils import Observable, Observer, MESSAGE_TYPE_DEFAULT, \
     MESSAGE_TYPE_POSTERIOR, MESSAGE_TYPE_FULL_HYPO, NEG_INF, EPS_P
 import numpy as np
 from operator import mul

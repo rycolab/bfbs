@@ -24,8 +24,8 @@ The fairseq predictor can read any model trained with fairseq.
 import logging
 import os
 
-from cam.sgnmt import utils
-from cam.sgnmt.predictors.core import Predictor
+import utils
+from predictors.core import Predictor
 
 from fairseq import checkpoint_utils, options, tasks
 from fairseq import utils as fairseq_utils

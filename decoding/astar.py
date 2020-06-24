@@ -21,8 +21,8 @@ import copy
 from heapq import heappush, heappop
 import logging
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
+import utils
+from decoding.core import Decoder, PartialHypothesis
 
 
 class AstarDecoder(Decoder):

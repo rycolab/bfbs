@@ -31,20 +31,20 @@ import traceback
 import os
 import uuid
 
-from cam.sgnmt import utils
-from cam.sgnmt.decoding.astar import AstarDecoder
-from cam.sgnmt.decoding.beam import BeamDecoder
-from cam.sgnmt.decoding.core import Hypothesis
-from cam.sgnmt.decoding.dijkstra import DijkstraDecoder
-from cam.sgnmt.decoding.dijkstra_time_sync import DijkstraTSDecoder
-from cam.sgnmt.decoding.reference import ReferenceDecoder
-from cam.sgnmt.decoding.sampling import SamplingDecoder
-from cam.sgnmt.decoding.dfs import DFSDecoder, \
+import utils
+from decoding.astar import AstarDecoder
+from decoding.beam import BeamDecoder
+from decoding.core import Hypothesis
+from decoding.dijkstra import DijkstraDecoder
+from decoding.dijkstra_time_sync import DijkstraTSDecoder
+from decoding.reference import ReferenceDecoder
+from decoding.sampling import SamplingDecoder
+from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
-from cam.sgnmt.decoding.greedy import GreedyDecoder
-from cam.sgnmt.decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
-from cam.sgnmt.output import TextOutputHandler, \
+from decoding.greedy import GreedyDecoder
+from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
+from output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
                              NgramOutputHandler, \
@@ -53,8 +53,8 @@ from cam.sgnmt.output import TextOutputHandler, \
                              StandardFSTOutputHandler, \
                              ScoreOutputHandler
 
-from cam.sgnmt.test.dummy_predictor import DummyPredictor
-from cam.sgnmt.ui import get_args
+from test.dummy_predictor import DummyPredictor
+from ui import get_args
 
 args = None
 """This variable is set to the global configuration when 

@@ -30,8 +30,8 @@ from abc import abstractmethod
 import os
 import errno
 import logging
-from cam.sgnmt import utils
-from cam.sgnmt import io
+import utils
+import io
 import numpy as np
 import codecs
 from collections import defaultdict
