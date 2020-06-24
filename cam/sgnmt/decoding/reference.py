@@ -1,8 +1,5 @@
-import copy
 import logging
-import numpy as np
 import time
-import math
 
 from cam.sgnmt import utils
 from cam.sgnmt.decoding.core import Decoder, PartialHypothesis

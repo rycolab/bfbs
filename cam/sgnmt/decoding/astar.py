@@ -65,13 +65,7 @@ class AstarDecoder(Decoder):
         self.nbest = max(1, decoder_args.nbest)
         self.capacity = decoder_args.beam
         self.early_stopping = decoder_args.early_stopping
-        self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
 
-    def _get_combined_score(self, hypo):
-        est_score = -self.estimate_future_cost(hypo)
-        if not self.pure_heuristic_scores:
-            return est_score + hypo.score
-        return est_score        
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using A* search. """
@@ -110,7 +104,7 @@ class AstarDecoder(Decoder):
             for trgt_word in posterior: # Estimate future cost, add to heap
                 next_hypo = hypo.cheap_expand(trgt_word, posterior[trgt_word],
                                                   score_breakdown[trgt_word])
-                combined_score = self._get_combined_score(next_hypo)
+                combined_score = self.get_adjusted_score(next_hypo)
                 heappush(open_set, (-combined_score, next_hypo))
                   
             # Limit heap capacity

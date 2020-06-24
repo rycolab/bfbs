@@ -258,7 +258,11 @@ class Decoder(Observable):
         self.current_sen_id = -1
         self.apply_predictors_count = 0
         self.temperature = decoder_args.temperature
-    
+         # score function will be monotonic without modifications to scoring function;
+         # currently, modified objectives are not implemented in this library. Can
+         # bring them back if wanted
+        self.not_monotonic = False
+
     def add_predictor(self, name, predictor, weight=1.0):
         """Adds a predictor to the decoder. This means that this 
         predictor is going to be used to predict the next target word
@@ -404,8 +408,8 @@ class Decoder(Observable):
         gumbel_posterior = shifted_posterior + gumbels + hypo.base_score
         Z = np.max(gumbel_posterior)
 
-        v = hypo.score - gumbel_posterior + utils.log1mexp(gumbel_posterior - Z)
-        gumbel_full_posterior = hypo.score - np.maximum(0, v) - utils.log1pexp(-np.abs(v))
+        v = hypo.score - gumbel_posterior + utils.logmexp(gumbel_posterior - Z)
+        gumbel_full_posterior = hypo.score - np.maximum(0, v) - utils.logpexp(-np.abs(v))
 
         # make sure invalid tokens still have neg inf log probability
         gumbel_full_posterior[(posterior == utils.NEG_INF).nonzero()] == utils.NEG_INF
@@ -448,6 +452,8 @@ class Decoder(Observable):
         current_score =  hypo.score
         if self.gumbel:
             return current_score
+
+        #the following are not currently being used. Can add back if there's reason
         if getattr(self, 'reward_type', False): 
             factor =  min(self.l, len(hypo))
             current_score += self.reward_coef*factor

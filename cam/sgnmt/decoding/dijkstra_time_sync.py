@@ -1,10 +1,7 @@
-import copy
 import logging
-import numpy as np
 from sortedcontainers import SortedDict
 from collections import defaultdict
 import time
-import math
 
 from cam.sgnmt import utils
 from cam.sgnmt.decoding.core import Decoder, PartialHypothesis
@@ -41,8 +38,6 @@ class DijkstraTSDecoder(Decoder):
 
         self.size_threshold = self.beam*decoder_args.memory_threshold_coef\
             if decoder_args.memory_threshold_coef > 0 else utils.INF
-
-        self.not_monotonic = False
 
         
     def decode(self, src_sentence):

@@ -157,9 +157,6 @@ def get_parser():
     group.add_argument("--verbosity", default="info",
                         choices=['debug', 'info', 'warn', 'error'],
                         help="Log level: debug,info,warn,error")
-    group.add_argument("--min_score", default=float("-inf"), type=float,
-                        help="Delete all complete hypotheses with total scores"
-                        " smaller than this value")
     group.add_argument("--range", default="",
                         help="Defines the range of sentences to be processed. "
                         "Syntax is equal to HiFSTs printstrings and lmerts "
@@ -258,16 +255,19 @@ def get_parser():
                         help="Size of beam. Only used if --decoder is set to "
                         "'beam' or 'astar'. For 'astar' it limits the capacity"
                         " of the queue. Use --beam 0 for unlimited capacity.")
-    group.add_argument("--sub_beam", default=0, type=int,
-                        help="This denotes the maximum number of children of "
-                        "a partial hypothesis in beam-like decoders. If zero, "
-                        "this is set to --beam to reproduce standard beam "
-                        "search.")
     group.add_argument("--allow_unk_in_output", default=True, type='bool',
                         help="If false, remove all UNKs in the final "
                         "posteriors. Predictor distributions can still "
                         "produce UNKs, but they have to be replaced by "
                         "other words by other predictors")
+    group.add_argument("--max_node_expansions", default=0, type=int,
+                        help="This parameter allows to limit the total number "
+                        "of search space expansions for a single sentence. "
+                        "If this is 0 we allow an unlimited number of "
+                        "expansions. If it is negative, the maximum number of "
+                        "expansions is this times the length of the source "
+                        "sentence. Supporting decoders:\n"
+                        "dfs")
     group.add_argument("--max_len_factor", default=2.0, type=float,
                         help="Limits the length of hypotheses to avoid "
                         "infinity loops in search strategies for unbounded "
@@ -287,54 +287,6 @@ def get_parser():
                         "score. DO NOT USE early stopping in combination with "
                         "the dfs or restarting decoder when your predictors "
                         "can produce positive scores!")
-    group.add_argument("--heuristics", default="",
-                        help="Comma-separated list of heuristics to use in "
-                        "heuristic based search like A*.\n\n"
-                        "* 'predictor': Predictor specific heuristics. Some "
-                        "predictors come with own heuristics - e.g. the fst "
-                        "predictor uses the shortest path to the final state."
-                        " Using 'predictor' combines the specific heuristics "
-                        "of all selected predictors.\n"
-                        "* 'greedy': Do greedy decoding to get the heuristic"
-                        " costs. This is expensive but accurate.\n"
-                        "* 'lasttoken': Use the single score of the last "
-                        "token.\n"
-                        "* 'stats': Collect unigram statistics during decoding"
-                        "and compare actual hypothesis scores with the product"
-                        " of unigram scores of the used words.\n"
-                        "* 'scoreperword': Using this heuristic normalizes the"
-                        " previously accumulated costs by its length. It can "
-                        "be used for beam search with normalized scores, using"
-                        " a capacity (--beam), no other heuristic, and setting"
-                        "--decoder to astar.\n\n"
-                        "Note that all heuristics are inadmissible, i.e. A* "
-                        "is not guaranteed to find the globally best path.")
-    group.add_argument("--low_decoder_memory", default=True, type='bool',
-                        help="Some decoding strategies support modes which do "
-                        "not change the decoding logic, but make use of the "
-                        "inadmissible pruning parameters like max_expansions "
-                        "to reduce memory consumption. This usually requires "
-                        "some  computational overhead for cleaning up data "
-                        "structures. Applicable to restarting and bucket "
-                        "decoders.")
-    group.add_argument("--collect_statistics", default="best",
-                       choices=['best', 'full', 'all'],
-                        help="Determines over which hypotheses statistics are "
-                        "collected.\n\n"
-                        "* 'best': Collect statistics from the current best "
-                        "full hypothesis\n"
-                        "* 'full': Collect statistics from all full hypos\n"
-                        "* 'all': Collect statistics also from partial hypos\n"
-                        "Applicable to the bucket decoder, the heuristic "
-                        "of the bow predictor, and the heuristic 'stats'.")
-    group.add_argument("--heuristic_scores_file", default="",
-                       help="The bow predictor heuristic and the stats "
-                       "heuristic sum up the unigram scores of words as "
-                       "heuristic estimate. This option should point to a "
-                       "mapping file from word-id to (unigram) score. If this "
-                       "is empty, the unigram scores are collected during "
-                       "decoding for each sentence separately according "
-                       "--collect_statistics.")
     group.add_argument("--decoder_diversity_factor", default=-1.0, type=float,
                        help="If this is greater than zero, promote diversity "
                        "between active hypotheses during decoding. The exact "
@@ -449,11 +401,6 @@ def get_parser():
     
     # Neural predictors
     group = parser.add_argument_group('Neural predictor options')
-    group.add_argument("--gnmt_alpha", default=0.0, type=float,
-                       help="If this is greater than zero and the combination "
-                       "scheme is set to length_norm, use Google-style length "
-                       " normalization (Wu et al., 2016) rather than simply "
-                       "dividing by translation length.")
     group.add_argument("--fairseq_path", default="",
                        help="Points to the model file (*.pt) for the fairseq "
                        "predictor. Like --path in fairseq-interactive.")

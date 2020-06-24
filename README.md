@@ -1,5 +1,7 @@
 # SWOR Decoding
 
+Library based on SGNMT: https://github.com/ucam-smt/sgnmt. See their [docs](http://ucam-smt.github.io/sgnmt/html/) for setting up a fairseq model to work with the library.
+
 ## Dependencies 
 
 ```
@@ -12,22 +14,50 @@ numpy
 
 ## Getting Started
 It's recommended to start with the pretrained models available from fairseq. Download any of the models from their NMT examples, unzip, and place model checkpoints in `data/ckpts`. 
- 
 
- To run SWOR decoding, use the command:
+Alternatively, one can play around with the toy model in the test scripts.
+ 
+### SWOR
+ To run SWOR decoding with the gumbel-max trick on a fairseq model, use the command:
 
  ```
- python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder dijkstra --beam 10 --gumbel --fairseq_temperature 0.1
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --src_test data/valid.de --preprocessing word --postprocessing bpe@@ --decoder dijkstra --beam 10 --gumbel --temperature 0.1
  ```
- where `--beam 10` would lead to 10 samples. You should get the same results using the beam decoder.
+ where `--beam 10` would lead to 10 samples. For gumbel sampling, you should get the same results using the beam decoder.
  
  ```
- python decode.py  --fairseq_path data/ckpts/cond_model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --input_method file --src_test data/valid.de --preprocessing word --n_cpu_threads 30 --postprocessing bpe@@ --decoder beam --beam 5 
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --src_test data/valid.de --preprocessing word --postprocessing bpe@@ --decoder beam --beam 10 --gumbel --temperature 0.1
  ```
+ For other sampling schemes, remove the `--gumbel` flag and set the decoder to one of `sampling, basic_swor, mem_swor`.
+
+ A basic example of outputs can be seen when using the test suite:
+
+ ```
+ python test.py --decoder beam --beam 10 --gumbel --temperature 0.1
+ ```
+
+
+### Beam Search
+
+Basic beam search can be performed as follows:
+
+```
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --src_test data/valid.de --preprocessing word --postprocessing bpe@@ --decoder beam --beam 10 --early_stopping True
+ ```
+
+A faster version simply changes the decoder:
+
+```
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.bpe.de --trg_wmap data/wmaps/wmap.bpe.en --src_test data/valid.de --preprocessing word --postprocessing bpe@@ --decoder dijkstra_ts --beam 10 --early_stopping True
+ ```
+
+Use the `--early_stopping True` flag if you only want the best solution.
+
+The test suite can likewise be used by changing the decoder flag.
 
 ### Outputs
 
-To see all outputs, set `--outputs nbest_sep --output_path <path_prefix>`. You'll then get a file with a sample for each position.
+To see all outputs, set `--num_log <n>` for however many outputs (per input) you'd like to see. To write all outputs to files, set `--outputs nbest_sep --output_path <path_prefix>`. You'll then get a file of samples for each position (not each input!). To just write the first/best output to a file, use `--outputs text --output_path <path>`
 
 ### Scoring
  For scoring, append the arguments `--outputs text --output_path <file_name>.txt` and then detokenize the text using the moses detokenizer script (copied to `scripts/detokenizer.perl` for ease)
@@ -44,58 +74,5 @@ To see all outputs, set `--outputs nbest_sep --output_path <path_prefix>`. You'l
 
  If you want to decode on different data sets, lmk and I can send the tokenization scripts and bpe codes I used for training the models.
 
-## SGNMT
-
-
-SGNMT is an open-source framework for neural machine translation (NMT) and other sequence prediction
-tasks. The tool provides a flexible platform which allows pairing NMT with various other models such 
-as language models, length models, or bag2seq models. It supports rescoring both n-best lists and lattices.
-A wide variety of search strategies is available for complex decoding problems. 
-
-SGNMT is compatible with the following NMT toolkits:
-
--  [Tensor2Tensor](https://github.com/tensorflow/tensor2tensor) ([TensorFlow](https://www.tensorflow.org/))
--  [fairseq](https://github.com/pytorch/fairseq) ([PyTorch](https://pytorch.org/))
-
-Old SGNMT versions (0.x) are compatible with:
-
-- [(extended) TF seq2seq tutorial](https://github.com/ehasler/tensorflow) ([TensorFlow](https://www.tensorflow.org/))
-- [Blocks](http://blocks.readthedocs.io/en/latest/) ([Theano](http://deeplearning.net/software/theano/))
-
-
-Features:
-
-- Syntactically guided neural machine translation (NMT lattice rescoring)
-- n-best list rescoring with NMT
-- Integrating external n-gram posterior probabilities used in MBR
-- Ensemble NMT decoding
-- Forced NMT decoding
-- Integrating language models
-- Different search algorithms (beam, A\*, depth first search, greedy...)
-- Target sentence length modelling
-- Bag2Sequence models and decoding algorithms
-- Joint decoding with word- and subword/character-level models
-- Hypothesis recombination
-- Heuristic search
-- ...
-
-### Documentation
-
-Please see the [full SGNMT documentation](http://ucam-smt.github.io/sgnmt/html/) for more information.
-
-### Contributors
-
-- Felix Stahlberg, University of Cambridge
-- Eva Hasler, SDL Research
-- Danielle Saunders, University of Cambridge
-
-### Citing
-
-If you use SGNMT in your work, please cite the following paper:
-
-Felix Stahlberg, Eva Hasler, Danielle Saunders, and Bill Byrne.
-SGNMT - A Flexible NMT Decoding Platform for Quick Prototyping of New Models and Search Strategies.
-In *Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing (EMNLP 17 Demo Session)*, September 2017. Copenhagen, Denmark.
-[arXiv](https://arxiv.org/abs/1707.06885)
 
 

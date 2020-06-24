@@ -185,6 +185,12 @@ def argmax(arr):
     else:
         return np.argmax(arr)
 
+def logmexp(x):
+    return np.log1p(-np.exp(x))
+
+def logpexp(x):
+    return np.log1p(np.exp(x))
+
 
 def logsigmoid(x):
     """
