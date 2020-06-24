@@ -195,8 +195,6 @@ def do_decode(decoder,
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
     sen_indices = []
-    diversity_metrics = []
-    not_full = 0
     src_sentences = list(range(10))
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
@@ -204,6 +202,7 @@ def do_decode(decoder,
         decoder.apply_predictors_count = 0
         start_hypo_time = time.time()
         hypos = decoder.decode([src])
+        all_hypos.append(hypos)
         if not hypos:
             logging.error("No translation found for ID %d!" % (sen_idx+1))
             logging.info("Stats (ID: %d): score=<not-found> "
@@ -225,11 +224,34 @@ def do_decode(decoder,
                                         decoder.apply_predictors_count,
                                         time.time() - start_hypo_time,
                                         utils.perplexity(logged_hypo.score_breakdown)))
+    return src_sentences, all_hypos
 
-           
+
+def do_decode_swor(decoder, 
+              output_handlers, 
+              src_sentences,
+              trgt_sentences=None,
+              num_log=1):
+    
+    src_sentences, all_hypos = do_decode(decoder, output_handlers, src_sentences, trgt_sentences, num_log)
+    all_trgt_sens = [[tuple(h.trgt_sentence) for h in hypos] for hypos in all_hypos]
+    for s, hypos in zip(src_sentences, all_trgt_sens):
+        if len(hypos) != len(set(hypos)):
+            logging.error("Not unique set for sentence %s; found %d duplicates." % (str(s), len(hypos) - len(set(hypos))))
+    for hypos in all_hypos:
+        for h in hypos:
+            if h.total_score > sum(h.score_breakdown):
+                logging.error("Computation error. Adjusted score greater than original score for sentence %s" % str(s))
+        
 
 args = get_args()
 base_init(args)
 decoder = create_decoder()
-do_decode(decoder, [], False, num_log=args.num_log)
+if args.decoder in ('basic_swor', 'mem_swor'):
+    do_decode_swor(decoder, [], False, num_log=args.num_log)
+else:
+    if args.beam <= 0:
+        logging.warn("Using beam size <= 0. Decoding may not terminate")
+    do_decode(decoder, [], False, num_log=args.num_log)
+
 

@@ -29,7 +29,7 @@ class BasicSworDecoder(Decoder):
         self.src_sentence = src_sentence
         self.initialize_predictors(self.src_sentence)
 
-        while len(self.full_hypos) < self.nbest:
+        while len(self.full_hypos) < self.nbest and self.samples_left():
             self.reset_predictors(src_sentence)
             hypo = PartialHypothesis(self.get_predictor_states())
             self.start = True
@@ -89,6 +89,13 @@ class BasicSworDecoder(Decoder):
         self.dists = {}
         super().initialize_predictors(hypo)
 
+    def samples_left(self):
+        if len(self.full_hypos) == 0:
+            return True
+        start_hash = tuple()
+        _, _, adjusted_lprobabilities = self.dists[start_hash].values()
+        return np.any(adjusted_lprobabilities > utils.NEG_INF)
+
 
 class MemEfficientSworDecoder(BasicSworDecoder):
     
@@ -141,6 +148,16 @@ class MemEfficientSworDecoder(BasicSworDecoder):
     def initialize_predictors(self, hypo):
         self.ids = defaultdict(lambda: defaultdict(lambda: utils.NEG_INF))
         super().initialize_predictors(hypo)
+
+    def samples_left(self):
+        if len(self.full_hypos) == 0:
+            return True
+        self.reset_predictors(self.src_sentence)
+        ids, posterior, _ = self.apply_predictors()
+        empty_hypo = PartialHypothesis()
+        lprobabilities = utils.log_softmax(posterior, self.temperature)
+        adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, empty_hypo, ids)
+        return np.any(adjusted_lprobabilities > utils.NEG_INF)
 
 
 class Dist(object):

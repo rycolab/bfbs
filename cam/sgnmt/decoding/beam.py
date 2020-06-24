@@ -71,31 +71,23 @@ class BeamDecoder(Decoder):
         if self.diversity_factor > 0.0:
             logging.fatal("Diversity promoting beam search is not implemented "
                           "yet")
+        self.nbest = max(1, decoder_args.nbest)
         self.beam_size = decoder_args.beam
         self.sub_beam_size = decoder_args.sub_beam
         if self.sub_beam_size <= 0:
             self.sub_beam_size = decoder_args.beam
-        self.hypo_recombination = decoder_args.hypo_recombination
-        self.maintain_best_scores = False
         if decoder_args.early_stopping:
             self.stop_criterion = self._best_eos 
-            if not self.hypo_recombination:
-                self.maintain_best_scores = True
-                logging.debug("Risk-free beam-search pruning enabled")
         else:
             self.stop_criterion = self._all_eos
-        self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         self.reward = None #1.3
 
     
-    def _get_combined_score(self, hypo):
-        """Combines hypo score with future cost estimates.""" 
-        return hypo.score
     
     def _best_eos(self, hypos):
         """Returns true if the best hypothesis ends with </S>"""
         if self.reward:
-            ln_scores = [self._get_combined_score(hypo) for hypo in hypos]
+            ln_scores = [self.get_adjusted_score(hypo) for hypo in hypos]
             return hypos[np.argsort(ln_scores)[-1]].get_last_word() != utils.EOS_ID
             
         return hypos[0].get_last_word() != utils.EOS_ID
@@ -152,15 +144,6 @@ class BeamDecoder(Decoder):
         hypos.reverse()
         return hypos
     
-    def _register_score(self, score):
-        """Updates best_scores and min_score. """
-        if not self.maintain_best_scores:
-            return
-        self.best_scores.append(score)
-        self.best_scores.sort(reverse=True)
-        if len(self.best_scores) >= self.beam_size:
-            self.best_scores = self.best_scores[:self.beam_size]
-            self.min_score = self.best_scores[-1] 
     
     def _get_initial_hypos(self):
         """Get the list of initial ``PartialHypothesis``. """
@@ -186,27 +169,27 @@ class BeamDecoder(Decoder):
             for hypo in hypos:
                 if hypo.get_last_word() == utils.EOS_ID:
                     next_hypos.append(hypo)
-                    next_scores.append(self._get_combined_score(hypo))
+                    next_scores.append(self.get_adjusted_score(hypo))
                     continue 
                 for next_hypo in self._expand_hypo(hypo, self.sub_beam_size):
-                    next_score = self._get_combined_score(next_hypo)
+                    next_score = self.get_adjusted_score(next_hypo)
                     if next_score > self.min_score:
                         next_hypos.append(next_hypo)
                         next_scores.append(next_score)
-                        self._register_score(next_score)
-            if self.hypo_recombination:
-                hypos = self._filter_equal_hypos(next_hypos, next_scores)
-            else:
-                hypos = self._get_next_hypos(next_hypos, next_scores)
+            hypos = self._get_next_hypos(next_hypos, next_scores)
         for hypo in hypos:
             if hypo.get_last_word() == utils.EOS_ID:
-                hypo.score = self._get_combined_score(hypo)
+                hypo.score = self.get_adjusted_score(hypo)
                 self.add_full_hypo(hypo.generate_full_hypothesis()) 
         if not self.full_hypos:
             logging.warn("No complete hypotheses found for %s" % src_sentence)
+
+        if len(self.full_hypos) < self.nbest:
+            logging.warn("Adding incomplete hypotheses as candidates for %s" % src_sentence)
+            for hypo in hypos:
+                if hypo.get_last_word() != utils.EOS_ID:
+                    hypo.score = self.get_adjusted_score(hypo)
+                    self.add_full_hypo(hypo.generate_full_hypothesis()) 
             
-        if self.reward:
-            for h in self.full_hypos:
-                h.total_score += self.reward*min(self.l, len(h))
         print("Count", self.count)
         return self.get_full_hypos_sorted()

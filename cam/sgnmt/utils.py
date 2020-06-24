@@ -21,7 +21,7 @@ quirks Python sometimes has.
 """
 
 from abc import abstractmethod
-import numpy
+import numpy as np
 from numpy import log, log1p, exp, expm1, inf, nan
 import operator
 from scipy.special import logsumexp, softmax
@@ -58,13 +58,13 @@ NOTAPPLICABLE_ID = 3
 """Reserved word ID which is currently not used. """
 
 
-NEG_INF = -numpy.inf
+NEG_INF = -np.inf
 
 
-MACHINE_EPS = numpy.finfo(float).eps
+MACHINE_EPS = np.finfo(float).eps
 
 
-INF = numpy.inf
+INF = np.inf
 
 
 EPS_P = 0.00001
@@ -116,7 +116,7 @@ def log_sum_log_semiring(vals):
     Args:
         vals  (set): List or set of numerical values
     """
-    return logsumexp(numpy.asarray([val for val in vals]))
+    return logsumexp(np.asarray([val for val in vals]))
 
 
 log_sum = log_sum_log_semiring
@@ -147,8 +147,8 @@ def argmax_n(arr, n):
     elif len(arr) <= n:
         return range(len(arr))
     elif hasattr(arr, 'is_cuda') and arr.is_cuda:
-        return numpy.argpartition(arr.cpu(), -n)[-n:]
-    return numpy.argpartition(arr, -n)[-n:]
+        return np.argpartition(arr.cpu(), -n)[-n:]
+    return np.argpartition(arr, -n)[-n:]
 
 
 def max_(arr):
@@ -167,7 +167,7 @@ def max_(arr):
         return max(arr.values())
     if isinstance(arr, list):
         return max(arr)
-    return numpy.max(arr)
+    return np.max(arr)
 
 
 def argmax(arr):
@@ -183,7 +183,7 @@ def argmax(arr):
     if isinstance(arr, dict):
         return max(arr.items(), key=operator.itemgetter(1))[0]
     else:
-        return numpy.argmax(arr)
+        return np.argmax(arr)
 
 
 def logsigmoid(x):
@@ -248,14 +248,15 @@ def log_add(x, y):
 
 
 def log_minus(x, y):
-    if y - x > MACHINE_EPS:
-        logging.warn("Using function log_minus for invalid values")
-    if x <= y:
+    if x == y:
         return NEG_INF
+    if y > x:
+        logging.warn("Using function log_minus for invalid values")
+        return nan
     else:
         return x + log1mexp(y-x)
 
-vectorized_log_minus = numpy.vectorize(log_minus)
+vectorized_log_minus = np.vectorize(log_minus)
 
 def log_add_old(a, b):
     # takes two log probabilities; equivalent to adding probabilities in log space
@@ -273,18 +274,18 @@ def log_minus_old(a, b):
     if b == NEG_INF:
         return a
     comp = a + log1mexp(-(a-b))
-    return comp if not numpy.isnan(comp) else NEG_INF
+    return comp if not np.isnan(comp) else NEG_INF
 
 
 def softmax(x, temperature=1.):
-    return numpy.exp(log_softmax(x, temperature=temperature))
+    return np.exp(log_softmax(x, temperature=temperature))
 
 def log_softmax(x, temperature=1.):
     x = x/temperature
     # numerically stable log softmax
-    shift_x = x - numpy.max(x)
+    shift_x = x - np.max(x)
     # mask invalid values (neg inf)
-    b = (~numpy.ma.masked_invalid(shift_x).mask).astype(int)
+    b = (~np.ma.masked_invalid(shift_x).mask).astype(int)
     return shift_x - logsumexp(shift_x, b=b)
 
   
@@ -296,9 +297,9 @@ def binary_search(a, x):
         return -1
 
 def gumbel_max_sample(x, seed=0):
-    numpy.random.seed(seed=seed)
-    z = numpy.random.gumbel(loc=0, scale=1, size=x.shape)
-    return (x + z).argmax()
+    np.random.seed(seed=seed)
+    z = np.random.gumbel(loc=0, scale=1, size=x.shape)
+    return np.nanargmax(x + z)
 
 def perplexity(arr):
     score = sum([s for s in arr])
@@ -427,7 +428,7 @@ def ngram_diversity(hypos):
 def test():
     from arsenal.maths import assert_equal
 
-    for a,b in numpy.random.uniform(0, 10, size=(100, 2)):
+    for a,b in np.random.uniform(0, 10, size=(100, 2)):
 
         if a < b:
             a, b = b, a
