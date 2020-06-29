@@ -98,7 +98,7 @@ class BasicSworDecoder(Decoder):
         return np.any(~np.isnan(adjusted_lprobabilities) > utils.NEG_INF )
 
 
-class SworDecoder(Decoder):
+class SworDecoder(BasicSworDecoder):
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -111,29 +111,6 @@ class SworDecoder(Decoder):
                                    from the configuration API.
         """
         super(SworDecoder, self).__init__(decoder_args)
-        self.nbest = decoder_args.nbest
-        self.early_stopping = decoder_args.early_stopping
-        assert not self.gumbel
-        
-    def decode(self, src_sentence):
-        self.initialize_predictors(src_sentence)
-        self.covered_lprob = utils.NEG_INF
-
-        while len(self.full_hypos) < self.nbest and self.samples_left():
-            if np.exp(self.covered_lprob) >= 1.0 - utils.MACHINE_EPS:
-                logging.warn("Samples cover 100% of probability. Behavior beyond this point is undefined")
-            self.reset_predictors(src_sentence)
-            hypo = PartialHypothesis(self.get_predictor_states())
-            hypo, score = self._expand_hypo(hypo, seed=len(self.full_hypos))
-            self.add_full_hypo(hypo.generate_full_hypothesis())
-            self.covered_lprob = utils.log_add(self.covered_lprob, score)
-            
-        logging.info("%d sentences covering %f probability" %(len(self.full_hypos), np.exp(self.covered_lprob)))
-        return self.full_hypos
-
-    def initialize_predictors(self, src_sentence):
-        self.dists = MapDist()
-        super().initialize_predictors(src_sentence)
 
     def _expand_hypo(self, hypo, seed=0):
         if hypo.get_last_word() == utils.EOS_ID or len(hypo) == self.max_len:
@@ -167,23 +144,6 @@ class SworDecoder(Decoder):
         hypo, final = self._expand_hypo(hypo, seed=seed)
         self.dists.adjust(prefix, next_word, final)
         return hypo, final
-         
-    def reset_predictors(self, src_sentence):
-        self.start = True
-        for idx, (p, _) in enumerate(self.predictors):
-            p.set_current_sen_id(self.current_sen_id)
-            p.initialize(src_sentence)
-        for h in self.heuristics:
-            h.initialize(src_sentence)
-
-    def samples_left(self):
-        if len(self.full_hypos) == 0:
-            return True
-        if self.early_stopping and np.exp(self.covered_lprob) >= 1.0 - utils.MACHINE_EPS:
-            return False
-        start_hash = tuple()
-        _, _, adjusted_lprobabilities, _ = self.dists.get(start_hash)
-        return np.any(~np.isnan(adjusted_lprobabilities) > utils.NEG_INF )
 
 
 class MemEfficientSworDecoder(BasicSworDecoder):
