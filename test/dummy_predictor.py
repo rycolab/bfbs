@@ -41,7 +41,7 @@ class DummyPredictor(Predictor):
         hash_key = int(hashlib.sha256(hash_rep.encode('utf-8')).hexdigest(), 16) 
         dist_key = hash_key % self.num_dists
         unnorm_posterior = copy.copy(self.prob_dists[dist_key])
-        unnorm_posterior[self.eos_id] -= unnorm_posterior.max()/len(self.consumed)
+        unnorm_posterior[self.eos_id] -= unnorm_posterior.max()/max(len(self.consumed),1)
         return utils.log_softmax(unnorm_posterior, temperature=self.model_temperature)
     
     def initialize(self, src_sentence):

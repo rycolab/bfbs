@@ -30,6 +30,9 @@ import time
 import traceback
 import os
 import uuid
+import numpy as np
+import random
+import string
 
 import utils
 from decoding.astar import AstarDecoder
@@ -43,7 +46,7 @@ from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
 from decoding.greedy import GreedyDecoder
-from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder
+from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder, SworDecoder
 from output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
@@ -56,6 +59,7 @@ from output import TextOutputHandler, \
 from test.dummy_predictor import DummyPredictor
 from ui import get_args
 
+random.seed(0)
 args = None
 """This variable is set to the global configuration when 
 base_init().
@@ -94,8 +98,6 @@ def base_init(new_args):
         logging.getLogger().setLevel(logging.ERROR)
     # Set reserved word IDs
     utils.switch_to_fairseq_indexing()
-    args.max_len_factor=10
-    
 
 def add_predictors(decoder):
     """Adds all enabled predictors to the ``decoder``. This function 
@@ -151,6 +153,8 @@ def create_decoder():
             decoder = BasicSworDecoder(args)
         elif args.decoder == "mem_swor":
             decoder = MemEfficientSworDecoder(args)
+        elif args.decoder == "alt_swor":
+            decoder = SworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
@@ -168,11 +172,15 @@ def create_decoder():
 def _generate_dummy_hypo(predictors):
     return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
+def randomString(stringLength=5):
+    letters = string.ascii_lowercase
+    return [random.choice(letters) for i in range(stringLength)]
 
 def do_decode(decoder, 
               output_handlers, 
               src_sentences,
               trgt_sentences=None,
+              test_str_length=5,
               num_log=1):
     """This method contains the main decoding loop. It iterates through
     ``src_sentences`` and applies ``decoder.decode()`` to each of them.
@@ -195,13 +203,13 @@ def do_decode(decoder,
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
     sen_indices = []
-    src_sentences = list(range(10))
+    src_sentences = [randomString(test_str_length) for i in range(10)]
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
-        logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, str(src)))
+        logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, ''.join(src)))
         decoder.apply_predictors_count = 0
         start_hypo_time = time.time()
-        hypos = decoder.decode([src])
+        hypos = decoder.decode(src)
         all_hypos.append(hypos)
         if not hypos:
             logging.error("No translation found for ID %d!" % (sen_idx+1))
@@ -212,7 +220,7 @@ def do_decode(decoder,
                                     time.time() - start_hypo_time))
             hypos = [_generate_dummy_hypo(decoder.predictors)]
         
-        for logged_hypo in hypos[:num_log]:
+        for logged_hypo in sorted(hypos, reverse=True)[:num_log]:
             logging.info("Decoded (ID: %d): %s" % (
                     sen_idx+1,
                     logged_hypo.trgt_sentence))
@@ -233,7 +241,7 @@ def do_decode_swor(decoder,
               trgt_sentences=None,
               num_log=1):
     
-    src_sentences, all_hypos = do_decode(decoder, output_handlers, src_sentences, trgt_sentences, num_log)
+    src_sentences, all_hypos = do_decode(decoder, output_handlers, src_sentences, trgt_sentences, num_log=num_log)
     all_trgt_sens = [[tuple(h.trgt_sentence) for h in hypos] for hypos in all_hypos]
     for s, hypos in zip(src_sentences, all_trgt_sens):
         if len(hypos) != len(set(hypos)):
@@ -242,12 +250,33 @@ def do_decode_swor(decoder,
         for h in hypos:
             if h.total_score > sum(h.score_breakdown):
                 logging.error("Computation error. Adjusted score greater than original score for sentence %s" % str(s))
-        
+
+def test_utils():
+    from arsenal.maths import assert_equal
+
+    for a,b in np.random.uniform(0, 10, size=(100, 2)):
+
+        if a < b:
+            a, b = b, a
+
+        want = np.log(a-b)
+        assert_equal(want, utils.log_minus(np.log(a), np.log(b)), 'log sub timv')
+        assert_equal(want, utils.log_minus_old(np.log(a), np.log(b)), 'log sub clara')
+
+        want = np.log(a+b)
+        assert_equal(want, utils.log_add(np.log(a), np.log(b)), 'log add timv')
+        assert_equal(want, utils.log_add_old(np.log(a), np.log(b)), 'log add clara')
+
 
 args = get_args()
 base_init(args)
+
+if not args.decoder:
+    test_utils()
+    exit(0)
+
 decoder = create_decoder()
-if args.decoder in ('basic_swor', 'mem_swor'):
+if 'swor' in args.decoder:
     do_decode_swor(decoder, [], False, num_log=args.num_log)
 else:
     if args.beam <= 0:

@@ -257,7 +257,8 @@ def log_minus(x, y):
     if x == y:
         return NEG_INF
     if y > x:
-        logging.warn("Using function log_minus for invalid values")
+        if y-x > MACHINE_EPS:
+            logging.warn("Using function log_minus for invalid values")
         return nan
     else:
         return x + log1mexp(y-x)
@@ -308,6 +309,8 @@ def gumbel_max_sample(x, seed=0):
     return np.nanargmax(x + z)
 
 def perplexity(arr):
+    if len(arr) == 0:
+        return INF
     score = sum([s for s in arr])
     return 2**(-score/len(arr))
 
@@ -429,27 +432,6 @@ def ngram_diversity(hypos):
     ds = [distinct_ngrams(hypos, i) for i in range(1,5)]
     return sum(ds)/4.
 
-
-
-def test():
-    from arsenal.maths import assert_equal
-
-    for a,b in np.random.uniform(0, 10, size=(100, 2)):
-
-        if a < b:
-            a, b = b, a
-
-        want = log(a-b)
-        assert_equal(want, log_minus(log(a), log(b)), 'log sub timv')
-        assert_equal(want, log_minus_old(log(a), log(b)), 'log sub clara')
-
-        want = log(a+b)
-        assert_equal(want, log_add(log(a), log(b)), 'log add timv')
-        assert_equal(want, log_add_old(log(a), log(b)), 'log add clara')
-
-
-if __name__ == '__main__':
-    test()
 
 MESSAGE_TYPE_DEFAULT = 1
 """Default message type for observer messages """
