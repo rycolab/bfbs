@@ -1,45 +1,14 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This file contains common basic functionality which can be used from
-anywhere. This includes the definition of reserved word indices, some
-mathematical functions, and helper functions to deal with the small
-quirks Python sometimes has.
-"""
-
 from abc import abstractmethod
-import numpy as np
-from numpy import log, log1p, exp, expm1, inf, nan
 import operator
-from scipy.special import logsumexp, softmax
-from subprocess import call
-from shutil import copyfile
 import logging
 import os
 import sys
 from bisect import bisect_left 
 from functools import reduce  
 
-try:
-    import pywrapfst as fst
-except ImportError:
-    try:
-        import openfst_python as fst
-    except ImportError:
-        pass # Deal with it in decode.py
+import numpy as np
+from numpy import log, log1p, exp, expm1, inf, nan
+from scipy.special import logsumexp
 
 # Reserved IDs
 GO_ID = 1
@@ -54,17 +23,16 @@ UNK_ID = 0
 """Reserved word ID for the unknown word (UNK). """
 
 
-NOTAPPLICABLE_ID = 3
-"""Reserved word ID which is currently not used. """
-
-
-NEG_INF = -np.inf
+NEG_INF = -inf
 
 
 MACHINE_EPS = np.finfo(float).eps
 
 
-INF = np.inf
+LOG_MACHINE_EPS = np.log(MACHINE_EPS)
+
+
+INF = inf
 
 
 EPS_P = 0.00001
@@ -265,6 +233,8 @@ def log_minus(x, y):
 
 vectorized_log_minus = np.vectorize(log_minus)
 
+vectorized_log_add_eps = np.vectorize(lambda x: log_add(x, LOG_MACHINE_EPS))
+
 def log_add_old(a, b):
     # takes two log probabilities; equivalent to adding probabilities in log space
     if a == NEG_INF or b == NEG_INF:
@@ -302,11 +272,6 @@ def binary_search(a, x):
         return i 
     else: 
         return -1
-
-def gumbel_max_sample(x, seed=0):
-    np.random.seed(seed=seed)
-    z = np.random.gumbel(loc=0, scale=1, size=x.shape)
-    return np.nanargmax(x + z)
 
 def perplexity(arr):
     if len(arr) == 0:
@@ -430,7 +395,7 @@ def distinct_ngrams(hypos, n):
 
 def ngram_diversity(hypos):
     ds = [distinct_ngrams(hypos, i) for i in range(1,5)]
-    return sum(ds)/4.
+    return sum(ds)/4
 
 
 MESSAGE_TYPE_DEFAULT = 1

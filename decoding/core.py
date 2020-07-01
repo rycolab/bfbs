@@ -160,7 +160,7 @@ class PartialHypothesis(object):
                                     the new word
         """
         hypo = self._new_partial_hypo(self.predictor_states,
-                                     int(word), float(score),
+                                     int(word), score,
                                      base_score=base_score,
                                      use_base=base_score is not None)
         hypo.word_to_consume = int(word)
@@ -432,14 +432,13 @@ class Decoder(Observable):
             hypo.word_to_consume = None
 
         ids, posterior, original_posterior = self.apply_predictors(hypo, limit)
- 
+
         hypo.predictor_states = self.get_predictor_states()
         new_hypos = [hypo.cheap_expand(
                         trgt_word,
                         posterior[idx],
                         base_score=original_posterior[idx] if self.gumbel else None
                         ) for idx, trgt_word in enumerate(ids)]
-    
         return new_hypos
 
 

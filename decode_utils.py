@@ -41,7 +41,10 @@ from decoding.dijkstra import DijkstraDecoder
 from decoding.dijkstra_time_sync import DijkstraTSDecoder
 from decoding.reference import ReferenceDecoder
 from decoding.sampling import SamplingDecoder
-from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder, SworDecoder
+from decoding.swor import BasicSworDecoder, \
+                            MemEfficientSworDecoder, \
+                            SworDecoder, \
+                            CPSworDecoder
 from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
@@ -201,6 +204,8 @@ def create_decoder():
             decoder = MemEfficientSworDecoder(args)
         elif args.decoder == "alt_swor":
             decoder = SworDecoder(args)
+        elif args.decoder == "cp_swor":
+            decoder = CPSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)

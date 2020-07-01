@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 
 import utils
+import sampling_utils
 from decoding.core import Decoder, PartialHypothesis
 
 
@@ -68,7 +69,7 @@ class BasicSworDecoder(Decoder):
             # assert not np.any(np.isnan(lprobabilities))
             self.dists.add_dist(prefix, ids, lprobabilities, self.get_predictor_states())
 
-        ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
+        ind = sampling_utils.gumbel_max_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -209,6 +210,75 @@ class MemEfficientSworDecoder(BasicSworDecoder):
         lprobabilities = utils.log_softmax(posterior, self.temperature)
         adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, start_hash, ids)
         return np.any(~np.isnan(adjusted_lprobabilities) > utils.NEG_INF )
+
+
+class CPSworDecoder(Decoder):
+    def __init__(self, decoder_args):
+        """Creates a new SWOR decoder instance. The following values are
+        fetched from `decoder_args`:
+        
+            nbest (int): number of desired samples. 
+            temperature (float): temperature for shifting probability distributions
+        
+        Args:
+            decoder_args (object): Decoder configuration passed through
+                                   from the configuration API.
+        """
+        super(CPSworDecoder, self).__init__(decoder_args)
+        self.nbest = decoder_args.nbest
+        self.early_stopping = decoder_args.early_stopping
+        self.sample_beam = self.nbest
+        assert not self.gumbel
+    
+    def decode(self, src_sentence):
+        self.initialize_predictors(src_sentence)
+        self.covered_lprob = utils.NEG_INF
+        
+        it = 0
+        hypos = [PartialHypothesis(self.get_predictor_states())]
+
+        while not self.stop_criterion(hypos):
+            if it > self.max_len: # prevent infinite loops
+                break
+            it += 1
+            next_hypos = []
+            next_scores = []
+            for hypo in hypos:
+                if hypo.get_last_word() == utils.EOS_ID:
+                    next_hypos.append(hypo)
+                    next_scores.append(self.get_adjusted_score(hypo))
+                    continue 
+                for next_hypo in self._expand_hypo(hypo, self.sample_beam):
+                    next_scores.append(self.get_adjusted_score(next_hypo))
+                    next_hypos.append(next_hypo)
+                        
+            hypos = self._get_next_hypos(next_hypos, next_scores)
+        
+        for hypo in hypos:
+            if hypo.get_last_word() == utils.EOS_ID:
+                hypo.score = self.get_adjusted_score(hypo)
+                self.add_full_hypo(hypo.generate_full_hypothesis()) 
+
+        if len(self.full_hypos) < self.nbest:
+            if not self.full_hypos:
+                logging.warn("No complete hypotheses found")
+            logging.warn("Adding incomplete hypotheses as candidates")
+            for hypo in hypos:
+                if hypo.get_last_word() != utils.EOS_ID:
+                    hypo.score = self.get_adjusted_score(hypo)
+                    self.add_full_hypo(hypo.generate_full_hypothesis()) 
+            
+        return self.get_full_hypos_sorted()
+
+    def _get_next_hypos(self, hypos, scores):
+        # faster to append to python list then convert to np array
+        scores = np.array(scores)
+        inds = sampling_utils.log_sample_k_dpp(scores - np.max(scores), self.sample_beam)
+        return [hypos[ind] for ind in inds]
+
+    def stop_criterion(self, hypos):
+        """Returns true if the all hypotheses end with </S>"""
+        return all([hypo.get_last_word() == utils.EOS_ID for hypo in hypos])
 
 
 class MapDist(object):

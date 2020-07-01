@@ -53,7 +53,7 @@ class BeamDecoder(Decoder):
             self.stop_criterion = self._best_eos 
         else:
             self.stop_criterion = self._all_eos
-        self.reward = None #1.3   
+        self.reward = None  
     
     def _best_eos(self, hypos):
         """Returns true if the best hypothesis ends with </S>"""
@@ -91,18 +91,14 @@ class BeamDecoder(Decoder):
             it = it + 1
             next_hypos = []
             next_scores = []
-            self.min_score = utils.NEG_INF
-            self.best_scores = []
             for hypo in hypos:
                 if hypo.get_last_word() == utils.EOS_ID:
                     next_hypos.append(hypo)
                     next_scores.append(self.get_adjusted_score(hypo))
                     continue 
                 for next_hypo in self._expand_hypo(hypo, self.beam_size):
-                    next_score = self.get_adjusted_score(next_hypo)
-                    if next_score > self.min_score:
-                        next_hypos.append(next_hypo)
-                        next_scores.append(next_score)
+                    next_hypos.append(next_hypo)
+                    next_scores.append(self.get_adjusted_score(next_hypo))
             hypos = self._get_next_hypos(next_hypos, next_scores)
         for hypo in hypos:
             if hypo.get_last_word() == utils.EOS_ID:

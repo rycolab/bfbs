@@ -35,6 +35,7 @@ import random
 import string
 
 import utils
+import sampling_utils
 from decoding.astar import AstarDecoder
 from decoding.beam import BeamDecoder
 from decoding.core import Hypothesis
@@ -46,7 +47,10 @@ from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
 from decoding.greedy import GreedyDecoder
-from decoding.swor import BasicSworDecoder, MemEfficientSworDecoder, SworDecoder
+from decoding.swor import BasicSworDecoder, \
+                            MemEfficientSworDecoder, \
+                            SworDecoder, \
+                            CPSworDecoder
 from output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
@@ -155,6 +159,8 @@ def create_decoder():
             decoder = MemEfficientSworDecoder(args)
         elif args.decoder == "alt_swor":
             decoder = SworDecoder(args)
+        elif args.decoder == "cp_swor":
+            decoder = CPSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
@@ -203,7 +209,7 @@ def do_decode(decoder,
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
     sen_indices = []
-    src_sentences = [randomString(test_str_length) for i in range(10)]
+    src_sentences = [randomString(test_str_length) for i in range(100)]
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
         logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, ''.join(src)))
@@ -267,11 +273,52 @@ def test_utils():
         assert_equal(want, utils.log_add(np.log(a), np.log(b)), 'log add timv')
         assert_equal(want, utils.log_add_old(np.log(a), np.log(b)), 'log add clara')
 
+    
+
+def test_sampling():
+    from arsenal.maths import assert_equal
+
+    def partition_brute(lambdas,k):
+        from itertools import combinations
+        all_combs = list(combinations(lambdas, k))
+        partition = [utils.prod(i) for i in all_combs]
+        return sum(partition)
+
+    for i in range(100):
+        N = np.random.randint(2,100)
+        k = np.random.randint(1,N)
+        print(N,k)
+        lambdas = np.random.uniform(size=N)
+        log_lambdas = np.log(lambdas)
+        
+        elem_polynomial_partition = sampling_utils.elem_polynomials(lambdas, k)[k, len(lambdas)]
+        log_elem_polynomial_partition = sampling_utils.log_elem_polynomials(log_lambdas, k)[k, len(lambdas)]
+        brute_partition = partition_brute(lambdas,k)
+        assert_equal(brute_partition, elem_polynomial_partition, 'standard elementary polynomial')
+        assert_equal(np.log(brute_partition), log_elem_polynomial_partition, 'log elementary polynomial')
+        log_lambdas = utils.vectorized_log_add_eps(log_lambdas)
+        #test_inclusion(log_lambdas - np.max(log_lambdas), k)
+
+def test_inclusion(log_lambdas, k):
+    N=len(log_lambdas)
+    E = sampling_utils.log_elem_polynomials(log_lambdas, k)
+    threshes = []
+    for n in range(N,0,-1):
+        u = np.random.uniform()
+        thresh = log_lambdas[n-1] + E[k-1, n-1] - E[k, n]
+        threshes.append(thresh)
+        if np.log(u) < thresh:
+            k -= 1
+            if k == 0:
+                break
+    print(threshes)
+
 
 args = get_args()
 base_init(args)
 
 if not args.decoder:
+    test_sampling()
     test_utils()
     exit(0)
 

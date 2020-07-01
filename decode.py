@@ -118,7 +118,8 @@ if args.input_method == 'file':
             decode_utils.do_decode(decoder,
                                    outputs,
                                    [line.strip() for line in f],
-                                   trgt)
+                                   trgt,
+                                   args.num_log)
         print(time.time())
     else:
         logging.fatal("Input file '%s' not readable. Please double-check the "
