@@ -209,7 +209,7 @@ def do_decode(decoder,
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
     sen_indices = []
-    src_sentences = [randomString(test_str_length) for i in range(100)]
+    src_sentences = [randomString(test_str_length) for i in range(10)]
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
         logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, ''.join(src)))

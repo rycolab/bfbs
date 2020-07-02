@@ -1,10 +1,33 @@
 import numpy as np
 import utils
+from bisect import bisect
 
 def gumbel_max_sample(x, seed=0):
-    np.random.seed(seed=seed)
+    """
+    x: log-probability distribution over discrete random variable
+    """
+    
     z = np.random.gumbel(loc=0, scale=1, size=x.shape)
     return np.nanargmax(x + z)
+
+def exponential_sample(x, seed=0):
+    """
+    probability distribution over discrete random variable
+    """
+    np.random.seed(seed=seed)
+    E = -np.log(np.random.uniform(size=len(x)))
+    E /= x
+    return np.nanargmin(E)
+
+def log_multinomial_sample(x, seed=0):
+    """
+    x: log-probability distribution over discrete random variable
+    """
+    np.random.seed(seed=seed)
+    x[np.where(np.isnan(x))] = utils.NEG_INF
+    c = np.logaddexp.accumulate(x) 
+    key = np.log(np.random.uniform())+c[-1]
+    return bisect(c, key)
 
 
 def elem_polynomials(lambdas, k):

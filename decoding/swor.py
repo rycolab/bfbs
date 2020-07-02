@@ -69,7 +69,7 @@ class BasicSworDecoder(Decoder):
             # assert not np.any(np.isnan(lprobabilities))
             self.dists.add_dist(prefix, ids, lprobabilities, self.get_predictor_states())
 
-        ind = sampling_utils.gumbel_max_sample(adjusted_lprobabilities, seed)
+        ind = sampling_utils.log_multinomial_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -135,7 +135,7 @@ class SworDecoder(BasicSworDecoder):
             lprobabilities = adjusted_lprobabilities = utils.log_softmax(posterior, self.temperature) + marg
             self.dists.add_dist(prefix, ids, lprobabilities, self.get_predictor_states())
 
-        ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
+        ind = utils.log_multinomial_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -174,7 +174,7 @@ class MemEfficientSworDecoder(BasicSworDecoder):
         lprobabilities = utils.log_softmax(posterior, self.temperature)
         adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, prefix, ids)
 
-        ind = utils.gumbel_max_sample(adjusted_lprobabilities, seed)
+        ind = utils.log_multinomial_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
