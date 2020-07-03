@@ -48,7 +48,7 @@ class BeamDecoder(Decoder):
             logging.fatal("Diversity promoting beam search is not implemented "
                           "yet")
         self.nbest = max(1, decoder_args.nbest)
-        self.beam_size = decoder_args.beam
+        self.beam_size = decoder_args.beam if not self.gumbel else self.nbest
         if decoder_args.early_stopping:
             self.stop_criterion = self._best_eos 
         else:

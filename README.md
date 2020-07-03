@@ -10,6 +10,12 @@ sacrebleu
 subword-nmt
 scipy
 numpy
+cython
+```
+
+To compile the datastructure classes, run:
+```
+python setup.py install
 ```
 
 ## Getting Started

@@ -1,6 +1,7 @@
 import copy
 import logging
 import utils
+from datastructures.min_max_queue import MinMaxHeap
 from decoding.core import Decoder, PartialHypothesis
 from heapq import heappush, heappop
 
@@ -26,14 +27,14 @@ class DijkstraDecoder(Decoder):
         super(DijkstraDecoder, self).__init__(decoder_args)
         self.nbest = max(1, decoder_args.nbest)
         self.use_lower_bound = not self.gumbel
-        self.capacity = decoder_args.beam
+        self.capacity = decoder_args.beam if not self.gumbel else self.nbest
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using A* search. """
         self.lower_bound = self.get_empty_hypo(src_sentence) if self.use_lower_bound else None 
         self.initialize_predictors(src_sentence)
         self.cur_capacity = self.capacity
-        open_set = utils.MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
+        open_set = MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
         self.push(open_set, 0.0, PartialHypothesis(self.get_predictor_states()))
 
         while open_set:
@@ -44,12 +45,15 @@ class DijkstraDecoder(Decoder):
                              self.apply_predictors_count, 
                              self.lower_bound.score if self.lower_bound else utils.NEG_INF, 
                              hypo.trgt_sentence))
-            if hypo.get_last_word() == utils.EOS_ID or (self.gumbel and len(hypo) == self.max_len): # Found best hypothesis
+            if hypo.get_last_word() == utils.EOS_ID: # Found best hypothesis
                 hypo.score = self.get_adjusted_score(hypo)
                 self.add_full_hypo(hypo.generate_full_hypothesis())
                 if len(self.full_hypos) == self.nbest: # if we have enough hypos
                     return self.get_full_hypos_sorted()
                 self.cur_capacity -= 1
+                continue
+
+            if len(hypo) == self.max_len: #discard and continue
                 continue
 
             for next_hypo in self._expand_hypo(hypo, self.capacity):
@@ -64,7 +68,7 @@ class DijkstraDecoder(Decoder):
     def push(self, set_, score, hypo):
         if self.lower_bound and score < self.lower_bound.score:
             return
-        if isinstance(set_, utils.MinMaxHeap):
+        if isinstance(set_, MinMaxHeap):
             if set_.size < self.cur_capacity:
                 set_.insert((-score, hypo))
             else:
@@ -77,7 +81,7 @@ class DijkstraDecoder(Decoder):
 
     
     def pop(self, set_):
-        if isinstance(set_, utils.MinMaxHeap):
+        if isinstance(set_, MinMaxHeap):
            return set_.popmin()
         else:
             return heappop(set_)

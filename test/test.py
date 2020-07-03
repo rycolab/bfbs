@@ -254,7 +254,7 @@ def do_decode_swor(decoder,
             logging.error("Not unique set for sentence %s; found %d duplicates." % (str(s), len(hypos) - len(set(hypos))))
     for hypos in all_hypos:
         for h in hypos:
-            if h.total_score > sum(h.score_breakdown):
+            if h.total_score > sum(h.score_breakdown) and not decoder.gumbel:
                 logging.error("Computation error. Adjusted score greater than original score for sentence %s" % str(s))
 
 def test_utils():
@@ -296,7 +296,6 @@ def test_sampling():
         brute_partition = partition_brute(lambdas,k)
         assert_equal(brute_partition, elem_polynomial_partition, 'standard elementary polynomial')
         assert_equal(np.log(brute_partition), log_elem_polynomial_partition, 'log elementary polynomial')
-        log_lambdas = utils.vectorized_log_add_eps(log_lambdas)
         #test_inclusion(log_lambdas - np.max(log_lambdas), k)
 
 def test_inclusion(log_lambdas, k):
@@ -323,7 +322,7 @@ if not args.decoder:
     exit(0)
 
 decoder = create_decoder()
-if 'swor' in args.decoder:
+if 'swor' in args.decoder or args.gumbel:
     do_decode_swor(decoder, [], False, num_log=args.num_log)
 else:
     if args.beam <= 0:

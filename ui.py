@@ -463,6 +463,10 @@ def validate_args(args):
     if args.postprocessing != "id" and not args.wmap and not args.trg_wmap:
         logging.warn("Your postprocessing method needs a target wmap.")
         sanity_check_failed = True
+    if args.gumbel and not args.nbest:
+        logging.warn("Must set nbest equivalent to number of desired samples "
+                    "when using gumbel decoder; beam size will not be used.")
+        sanity_check_failed = True
     if sanity_check_failed and not args.ignore_sanity_checks:
         raise AttributeError("Sanity check failed (see warnings). If you want "
             "to proceed despite these warnings, use --ignore_sanity_checks.")

@@ -3,6 +3,7 @@ import time
 import copy
 import logging
 from collections import defaultdict
+from datastructures.sum_heap import SumHeap 
 
 import utils
 import sampling_utils
@@ -51,10 +52,7 @@ class BasicSworDecoder(Decoder):
             return hypo, 0.0
 
         prefix = tuple(hypo.trgt_sentence)
-        if prefix in self.dists:
-            ids, lprobabilities, adjusted_lprobabilities, states = self.dists.get(prefix)
-            hypo.predictor_states = states
-        else:
+        if not prefix in self.dists:
             if self.start:
                 # prefix has no longer previously been seen. One deep copy to get started
                 hypo.predictor_states = copy.deepcopy(hypo.predictor_states)
@@ -65,11 +63,13 @@ class BasicSworDecoder(Decoder):
                 hypo.word_to_consume = None
     
             ids, posterior, _ = self.apply_predictors()
-            lprobabilities = adjusted_lprobabilities = utils.log_softmax(posterior, self.temperature)
             # assert not np.any(np.isnan(lprobabilities))
-            self.dists.add_dist(prefix, ids, lprobabilities, self.get_predictor_states())
+            self.dists.add_dist(prefix, ids, utils.log_softmax(posterior, self.temperature), self.get_predictor_states())
+        
+        ids, lprobabilities, adjusted_lprobabilities, states = self.dists.get(prefix)
+        hypo.predictor_states = states
 
-        ind = sampling_utils.log_multinomial_sample(adjusted_lprobabilities, seed)
+        ind = adjusted_lprobabilities.sample()
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -96,7 +96,8 @@ class BasicSworDecoder(Decoder):
             return False
         start_hash = tuple()
         _, _, adjusted_lprobabilities, _ = self.dists.get(start_hash)
-        return np.any(~np.isnan(adjusted_lprobabilities) > utils.NEG_INF )
+        n, d = adjusted_lprobabilities.n, adjusted_lprobabilities.d
+        return np.any(~np.isnan(adjusted_lprobabilities.S[d:d+n]) > utils.NEG_INF )
 
 
 class SworDecoder(BasicSworDecoder):
@@ -117,10 +118,7 @@ class SworDecoder(BasicSworDecoder):
         if hypo.get_last_word() == utils.EOS_ID or len(hypo) == self.max_len:
             return hypo, self.dists.marg(tuple(hypo.trgt_sentence))
         prefix = tuple(hypo.trgt_sentence)
-        if prefix in self.dists:
-            ids, lprobabilities, adjusted_lprobabilities, states = self.dists.get(prefix)
-            hypo.predictor_states = states
-        else:
+        if not prefix in self.dists:
             if self.start:
                 # prefix has no longer previously been seen. One deep copy to get started
                 hypo.predictor_states = copy.deepcopy(hypo.predictor_states)
@@ -132,10 +130,13 @@ class SworDecoder(BasicSworDecoder):
             
             ids, posterior, _ = self.apply_predictors()
             marg = self.dists.marg(prefix)
-            lprobabilities = adjusted_lprobabilities = utils.log_softmax(posterior, self.temperature) + marg
+            lprobabilities = utils.log_softmax(posterior, self.temperature) + marg
             self.dists.add_dist(prefix, ids, lprobabilities, self.get_predictor_states())
 
-        ind = utils.log_multinomial_sample(adjusted_lprobabilities, seed)
+        ids, lprobabilities, adjusted_lprobabilities, states = self.dists.get(prefix)
+        hypo.predictor_states = states
+
+        ind = adjusted_lprobabilities.sample()
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -174,7 +175,7 @@ class MemEfficientSworDecoder(BasicSworDecoder):
         lprobabilities = utils.log_softmax(posterior, self.temperature)
         adjusted_lprobabilities = self.adjust_probabilities(lprobabilities, prefix, ids)
 
-        ind = utils.log_multinomial_sample(adjusted_lprobabilities, seed)
+        ind = sampling_utils.log_multinomial_sample(adjusted_lprobabilities, seed)
         next_word = ids[ind]
 
         hypo.score += adjusted_lprobabilities[ind]
@@ -303,19 +304,15 @@ class MapDist(object):
             return 0
         return self.dist_map[prefix[:-1]].get_current(prefix[-1])
 
-    def set_zero_prob(self, prefix):
-        self.dist_map[prefix[:-1]].set_null(prefix[-1])
-
-
 
 class Dist(object):
 
     def __init__(self, ids, lprobabilities, predictor_states):
         self.ids = ids
-        self.lprobabilities = lprobabilities
-        self.adjustments = np.full_like(lprobabilities, utils.NEG_INF, dtype=np.float64)
+        self.lprobabilities = SumHeap(lprobabilities, log_space=True)
+        self.adjustments = SumHeap(np.full_like(lprobabilities, utils.NEG_INF, dtype=np.float64), log_space=True)
         self.predictor_states = copy.deepcopy(predictor_states)
-        self.adjusted_lprobabilities = np.copy(lprobabilities)
+        self.adjusted_lprobabilities = SumHeap(lprobabilities, log_space=True)
     
     def get_current(self, k):
         ind = utils.binary_search(self.ids, k)
@@ -325,11 +322,6 @@ class Dist(object):
         ind = utils.binary_search(self.ids, k)
         self.adjustments[ind] = utils.log_add(self.adjustments[ind], val)
         self.adjusted_lprobabilities[ind] = utils.log_minus(self.lprobabilities[ind], self.adjustments[ind])
-
-    def set_null(self, k):
-        ind = utils.binary_search(self.ids, k)
-        self.adjustments[ind] = self.lprobabilities[ind]
-        self.adjusted_lprobabilities[ind] = utils.NEG_INF
 
     def values(self):
         return self.ids, self.lprobabilities, self.adjusted_lprobabilities, self.predictor_states

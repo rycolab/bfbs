@@ -4,6 +4,7 @@ from collections import defaultdict
 import time
 
 import utils
+from datastructures.min_max_queue import MinMaxHeap
 from decoding.core import Decoder, PartialHypothesis
 
 
@@ -33,7 +34,7 @@ class DijkstraTSDecoder(Decoder):
         """
         super(DijkstraTSDecoder, self).__init__(decoder_args)
         self.nbest = max(1, decoder_args.nbest)
-        self.beam = decoder_args.beam
+        self.beam = decoder_args.beam if not self.gumbel else self.nbest
         self.early_stopping = decoder_args.early_stopping
 
         self.size_threshold = self.beam*decoder_args.memory_threshold_coef\
@@ -74,7 +75,7 @@ class DijkstraTSDecoder(Decoder):
         return self.get_full_hypos_sorted()
 
     def initialize_order_ds(self):
-        self.queues = [utils.MinMaxHeap() for k in range(self.max_len+1)]
+        self.queues = [MinMaxHeap() for k in range(self.max_len+1)]
         self.queues[0].insert((0.0, PartialHypothesis(self.get_predictor_states())))
         self.queue_order = SortedDict({0.0: 0})
         self.score_by_t = [0.0]
