@@ -31,7 +31,7 @@ import os
 import errno
 import logging
 import utils
-import io
+import io_utils
 import numpy as np
 import codecs
 from collections import defaultdict
@@ -91,13 +91,13 @@ class TextOutputHandler(OutputHandler):
         """Writes the hypotheses in ``all_hypos`` to ``path`` """
         if self.f is not None:
             for hypos in all_hypos:
-                self.f.write(io.decode(hypos[0].trgt_sentence))
+                self.f.write(io_utils.decode(hypos[0].trgt_sentence))
                 self.f.write("\n")
                 self.f.flush()
         else:
             with codecs.open(self.path, "w", encoding='utf-8') as f:
                 for hypos in all_hypos:
-                    f.write(io.decode(hypos[0].trgt_sentence))
+                    f.write(io_utils.decode(hypos[0].trgt_sentence))
                     f.write("\n")
                     self.f.flush()
 
@@ -160,7 +160,7 @@ class NBestSeparateOutputHandler(OutputHandler):
             while len(hypos) < len(self.f):
                 hypos.append(hypos[-1])
             for i in range(len(self.f)):
-                self.f[i].write(io.decode(hypos[i].trgt_sentence))
+                self.f[i].write(io_utils.decode(hypos[i].trgt_sentence))
                 self.f[i].write("\n")
                 self.f[i].flush()
 
@@ -213,7 +213,7 @@ class NBestOutputHandler(OutputHandler):
                 for hypo in hypos:
                     f.write("%d ||| %s ||| %s ||| %f" %
                             (idx,
-                             io.decode(hypo.trgt_sentence),
+                             io_utils.decode(hypo.trgt_sentence),
                              ' '.join("%s= %f" % (
                                   self.predictor_names[i],
                                   sum([s[i][0] for s in hypo.score_breakdown]))
