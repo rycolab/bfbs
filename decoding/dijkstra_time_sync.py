@@ -42,7 +42,7 @@ class DijkstraTSDecoder(Decoder):
 
         
     def decode(self, src_sentence):
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         self.initialize_order_ds() 
         self.total_queue_size = 0
         

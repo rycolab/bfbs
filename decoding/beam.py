@@ -80,7 +80,7 @@ class BeamDecoder(Decoder):
         """Decodes a single source sentence using beam search. """
         self.count = 0
         self.time = 0
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         hypos = self._get_initial_hypos()
         it = 0
         if self.reward:

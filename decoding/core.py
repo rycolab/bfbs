@@ -40,7 +40,7 @@ class Hypothesis:
     and a score breakdown to the separate predictor scores.
     """
     
-    def __init__(self, trgt_sentence, total_score, score_breakdown = [], base_score=0):
+    def __init__(self, trgt_sentence, total_score, score_breakdown = [], base_score=0.):
         """Creates a new full hypothesis.
         
         Args:
@@ -54,8 +54,7 @@ class Hypothesis:
         self.trgt_sentence = trgt_sentence
         self.total_score = total_score
         self.score_breakdown = score_breakdown
-        if base_score:
-            self.base_score = base_score
+        self.base_score = base_score
 
     def __repr__(self):
         """Returns a string representation of this hypothesis."""
@@ -87,7 +86,7 @@ class PartialHypothesis(object):
 
 
     def __lt__(self, other):
-        return len(self.trgt_sentence) < len(other.trgt_sentence)
+        return self.score < other.score
 
     def __len__(self):
         return len(self.trgt_sentence)
@@ -105,7 +104,7 @@ class PartialHypothesis(object):
         """Create a ``Hypothesis`` instance from this hypothesis. """
         return Hypothesis(self.trgt_sentence, self.score, self.score_breakdown, self.base_score)
     
-    def _new_partial_hypo(self, states, word, score, base_score=None, use_base=False):
+    def _new_partial_hypo(self, states, word, score, base_score=None, breakdown=None):
         """Create a new partial hypothesis, setting its state, score
         translation prefix and score breakdown.
         Args:
@@ -118,10 +117,10 @@ class PartialHypothesis(object):
                                     the new word
         """
         new_hypo = PartialHypothesis(states)
-        new_hypo.score = score if use_base else self.score + score
-        new_hypo.base_score = self.base_score + base_score if use_base else None
+        new_hypo.score = score 
+        new_hypo.base_score = base_score 
         new_hypo.score_breakdown = copy.copy(self.score_breakdown)
-        new_hypo.score_breakdown.append(base_score if use_base else score)
+        new_hypo.score_breakdown.append(breakdown if breakdown is not None else score)
         new_hypo.trgt_sentence = self.trgt_sentence + [word]
         
         return new_hypo
@@ -142,7 +141,7 @@ class PartialHypothesis(object):
         """
         return self._new_partial_hypo(new_states, word, score, score_breakdown)
     
-    def cheap_expand(self, word, score, base_score=None):
+    def cheap_expand(self, word, score, base_score=None, breakdown=None):
         """Creates a new partial hypothesis adding a new word to the
         translation prefix with given probability. Does NOT update the
         predictor states but adds a flag which signals that the last 
@@ -162,7 +161,7 @@ class PartialHypothesis(object):
         hypo = self._new_partial_hypo(self.predictor_states,
                                      int(word), score,
                                      base_score=base_score,
-                                     use_base=base_score is not None)
+                                     breakdown=breakdown)
         hypo.word_to_consume = int(word)
         return hypo
 
@@ -248,7 +247,7 @@ class Decoder(Observable):
         """
         super(Decoder, self).__init__()
         self.max_len_factor = decoder_args.max_len_factor
-        self.predictors = [] # Tuples (predictor, weight)
+        self.predictor = None # Tuples (predictor, weight)
         self.heuristics = []
         self.predictor_names = []
         self.gumbel = decoder_args.gumbel
@@ -256,14 +255,14 @@ class Decoder(Observable):
         self.nbest = 1 # length of n-best list
         self.combine_posteriors = self._combine_posteriors_simple
         self.current_sen_id = -1
-        self.apply_predictors_count = 0
+        self.apply_predictor_count = 0
         self.temperature = decoder_args.temperature
          # score function will be monotonic without modifications to scoring function;
          # currently, modified objectives are not implemented in this library. Can
          # bring them back if wanted
         self.not_monotonic = False
 
-    def add_predictor(self, name, predictor, weight=1.0):
+    def add_predictor(self, name, predictor):
         """Adds a predictor to the decoder. This means that this 
         predictor is going to be used to predict the next target word
         (see ``predict_next``)
@@ -273,13 +272,11 @@ class Decoder(Observable):
             predictor (Predictor): Predictor instance
             weight (float): Predictor weight
         """
-        self.predictors.append((predictor, weight))
-        self.predictor_names.append(name)
+        self.predictor = predictor
     
-    def remove_predictors(self):
+    def remove_predictor(self):
         """Removes all predictors of this decoder. """
-        self.predictors = []
-        self.predictor_names = []
+        self.predictor = None
 
     def set_heuristic_predictors(self, heuristic_predictors):
         """Define the list of predictors used by heuristics. This needs
@@ -327,14 +324,16 @@ class Decoder(Observable):
         """
         return sum([h.estimate_future_cost(hypo) for h in  self.heuristics])
     
-    def has_predictors(self):
+    def has_predictor(self):
         """Returns true if predictors have been added to the decoder. """
-        return len(self.predictors) > 0
+        return self.predictor is not None
     
     def consume(self, word, i=None):
         """Calls ``consume()`` on all predictors. """
-        for (p, _) in self.predictors:
-            p.consume(word) if i is None else p.consume(word, i) # May change predictor state
+        self.predictor.consume(word)
+
+    def get_initial_dist(self):
+        return utils.log_softmax(self.predictor.get_initial_dist(), self.temperature)
     
     def _get_non_zero_words(self, predictor, posterior):
         """Get the set of words from the predictor posteriors which 
@@ -354,7 +353,7 @@ class Decoder(Observable):
         fin_probs = np.isfinite(posterior)
         return [i for i, b in enumerate(fin_probs) if b]
     
-    def apply_predictors(self, hypo=None, top_n=0):
+    def apply_predictor(self, hypo=None, top_n=0):
         """Get the distribution over the next word by combining the
         predictor scores.
 
@@ -368,17 +367,14 @@ class Decoder(Observable):
             represented as tuples (unweighted_score, predictor_weight)
         """
         assert hypo is not None or not self.gumbel
-        # only supports 1 predictor at the moment. Can change if need for more comes up
-        assert len(self.predictors) == 1
-        self.apply_predictors_count += 1
-        predictor = self.predictors[0][0]
+        self.apply_predictor_count += 1
         # Get posteriors
-        posterior = predictor.predict_next()
+        posterior = self.predictor.predict_next()
         posterior = utils.log_softmax(posterior, temperature=self.temperature)
         # numerical stability check
         assert len(posterior) - np.count_nonzero(posterior) <= 1
         
-        non_zero_words = self._get_non_zero_words(predictor,
+        non_zero_words = self._get_non_zero_words(self.predictor,
                                                   posterior)
         if len(non_zero_words) == 0: # Special case: no word is possible
             non_zero_words = set([utils.EOS_ID])
@@ -386,11 +382,11 @@ class Decoder(Observable):
         if self.gumbel:
             gumbel_full_posterior = self.gumbelify(hypo, posterior)
             ids, posterior, original_posterior = self.combine_posteriors(
-                non_zero_words, gumbel_full_posterior, predictor.get_unk_probability(posterior),
+                non_zero_words, gumbel_full_posterior, self.predictor.get_unk_probability(posterior),
                 top_n=top_n, original_posterior=posterior) 
         else:
             ids, posterior, original_posterior = self.combine_posteriors(
-                non_zero_words, posterior, predictor.get_unk_probability(posterior), top_n=top_n) 
+                non_zero_words, posterior, self.predictor.get_unk_probability(posterior), top_n=top_n) 
                 
         assert self.allow_unk_in_output or not utils.UNK_ID in ids
         
@@ -431,13 +427,14 @@ class Decoder(Observable):
             self.consume(hypo.word_to_consume)
             hypo.word_to_consume = None
 
-        ids, posterior, original_posterior = self.apply_predictors(hypo, limit)
+        ids, posterior, original_posterior = self.apply_predictor(hypo, limit)
 
         hypo.predictor_states = self.get_predictor_states()
         new_hypos = [hypo.cheap_expand(
                         trgt_word,
-                        posterior[idx],
-                        base_score=original_posterior[idx] if self.gumbel else None
+                        posterior[idx] if self.gumbel else posterior[idx] + hypo.score,
+                        base_score=original_posterior[idx] + hypo.base_score if self.gumbel else hypo.base_score,
+                        breakdown=original_posterior[idx] if self.gumbel else posterior[idx]
                         ) for idx, trgt_word in enumerate(ids)]
         return new_hypos
 
@@ -475,7 +472,7 @@ class Decoder(Observable):
                                       non_zero_words,
                                       posterior,
                                       unk_prob,
-                                      top_n,
+                                      top_n=0,
                                       original_posterior=None):
         """        
         Args:
@@ -505,7 +502,7 @@ class Decoder(Observable):
     def set_current_sen_id(self, sen_id):
         self.current_sen_id = sen_id - 1  # -1 because incremented in init()
             
-    def initialize_predictors(self, src_sentence):
+    def initialize_predictor(self, src_sentence):
         """First, increases the sentence id counter and calls
         ``initialize()`` on all predictors. Then, ``initialize()`` is
         called for all heuristics.
@@ -517,9 +514,8 @@ class Decoder(Observable):
         self.max_len = int(np.ceil(self.max_len_factor * len(src_sentence)))
         self.full_hypos = []
         self.current_sen_id += 1
-        for idx, (p, _) in enumerate(self.predictors):
-            p.set_current_sen_id(self.current_sen_id)
-            p.initialize(src_sentence)
+        self.predictor.set_current_sen_id(self.current_sen_id)
+        self.predictor.initialize(src_sentence)
         for h in self.heuristics:
             h.initialize(src_sentence)
     
@@ -562,15 +558,13 @@ class Decoder(Observable):
         return NEG_INF
 
 
-    def get_empty_hypo(self, src_sentence):
-        self.initialize_predictors(src_sentence)
-        hypo = PartialHypothesis(self.get_predictor_states())
-        ind = utils.EOS_ID
-        ids, posterior, _ = self.apply_predictors()
+    def get_empty_hypo(self):
+        hypo = PartialHypothesis()
+        score = self.predictor.get_empty_str_prob()
 
-        hypo.score += posterior[ind] 
-        hypo.score_breakdown.append(posterior[ind])
-        hypo.trgt_sentence += [ind]
+        hypo.score += score
+        hypo.score_breakdown.append(score)
+        hypo.trgt_sentence += [utils.EOS_ID]
 
         hypo.score = self.get_adjusted_score(hypo)
         return hypo
@@ -598,14 +592,11 @@ class Decoder(Observable):
     
     def set_predictor_states(self, states):
         """Calls ``set_state()`` on all predictors. """
-        i = 0
-        for (p, _) in self.predictors:
-            p.set_state(states[i])
-            i = i + 1
+        self.predictor.set_state(states)
     
-    def get_predictor_states(self, batch=False):
+    def get_predictor_states(self):
         """Calls ``get_state()`` on all predictors. """
-        return [p.get_state() if not batch else p.get_states() for (p, _) in self.predictors]
+        return self.predictor.get_state()
 
     @staticmethod
     def _scale_combine_non_zero_scores(non_zero_word_count,
@@ -675,10 +666,5 @@ class Decoder(Observable):
             boolean. True if all predictor states are equal, False
             otherwise 
         """
-        i = 0
-        for (p, _) in self.predictors:
-            if not p.is_equal(states1[i], states2[i]):
-                return False
-            i = i + 1
-        return True
+        return self.predictor.is_equal(states1, states2)
     

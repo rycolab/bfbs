@@ -28,7 +28,7 @@ class SamplingDecoder(Decoder):
         assert not self.gumbel
         
     def decode(self, src_sentence):
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         hypos = [PartialHypothesis(copy.deepcopy(self.get_predictor_states())) for i in range(self.nbest)]
 
         t = 0
@@ -54,7 +54,7 @@ class SamplingDecoder(Decoder):
     def _expand_hypo(self, hypo, seed=0):
 
         self.set_predictor_states(hypo.predictor_states)
-        ids, posterior, _ = self.apply_predictors()
+        ids, posterior, _ = self.apply_predictor()
         probabilites = utils.softmax(posterior)
         ind = self._sample(probabilites, seed)
         next_word = ids[ind]

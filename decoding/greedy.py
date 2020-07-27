@@ -46,13 +46,13 @@ class GreedyDecoder(Decoder):
         
         Returns:
             list. A list of a single best ``Hypothesis`` instance."""
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         trgt_sentence = []
         score_breakdown = []
         trgt_word = None
         score = 0.0
         while trgt_word != utils.EOS_ID and len(trgt_sentence) <= self.max_len:
-            posterior,breakdown = self.apply_predictors(1)
+            posterior,breakdown = self.apply_predictor(1)
             trgt_word = utils.argmax(posterior)
             score += posterior[trgt_word]
             trgt_sentence.append(trgt_word)

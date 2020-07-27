@@ -31,8 +31,9 @@ class DijkstraDecoder(Decoder):
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using A* search. """
-        self.lower_bound = self.get_empty_hypo(src_sentence) if self.use_lower_bound else None 
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
+        self.lower_bound = self.get_empty_hypo() if self.use_lower_bound else None 
+        
         self.cur_capacity = self.capacity
         open_set = MinMaxHeap(reserve=self.capacity) if self.capacity > 0 else []
         self.push(open_set, 0.0, PartialHypothesis(self.get_predictor_states()))
@@ -42,7 +43,7 @@ class DijkstraDecoder(Decoder):
             logging.debug("Expand (est=%f score=%f exp=%d best=%f): sentence: %s"
                           % (-c, 
                              hypo.score, 
-                             self.apply_predictors_count, 
+                             self.apply_predictor_count, 
                              self.lower_bound.score if self.lower_bound else utils.NEG_INF, 
                              hypo.trgt_sentence))
             if hypo.get_last_word() == utils.EOS_ID: # Found best hypothesis

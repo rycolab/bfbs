@@ -74,9 +74,9 @@ class DFSDecoder(Decoder):
             self.add_full_hypo(partial_hypo.generate_full_hypothesis())
             self.best_score = max(self.best_score, partial_hypo.score)
             return
-        if self.apply_predictors_count > self.max_expansions: # pruning
+        if self.apply_predictor_count > self.max_expansions: # pruning
             return
-        posterior,score_breakdown = self.apply_predictors() 
+        posterior,score_breakdown = self.apply_predictor() 
         reload_states = False
         if self.early_stopping:
             worst_score = self.best_score - partial_hypo.score
@@ -88,7 +88,7 @@ class DFSDecoder(Decoder):
         logging.debug("Expand: best_score: %f exp: %d partial_score: "
                       "%f children: %d sentence: %s" %
                       (self.best_score,
-                       self.apply_predictors_count,
+                       self.apply_predictor_count,
                        partial_hypo.score,
                        len(children),
                        partial_hypo.trgt_sentence))
@@ -125,7 +125,7 @@ class DFSDecoder(Decoder):
             score. If ``max_expansions`` equals 0, the first element
             holds the global best scoring hypothesis
         """
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         self.max_expansions = self.get_max_expansions(self.max_expansions_param,
                                                       src_sentence) 
         self.best_score = self.get_lower_score_bound()
@@ -176,16 +176,16 @@ class SimpleDFSDecoder(Decoder):
                     self.best_score = partial_hypo.score
                     logging.info("New best: score: %f exp: %d sentence: %s" %
                           (self.best_score,
-                           self.apply_predictors_count,
+                           self.apply_predictor_count,
                            partial_hypo.trgt_sentence))
             return
 
-        self.apply_predictors_count += 1
+        self.apply_predictor_count += 1
         posterior = self.dfs_predictor.predict_next()
         logging.debug("Expand: best_score: %f exp: %d partial_score: "
                       "%f sentence: %s" %
                       (self.best_score,
-                       self.apply_predictors_count,
+                       self.apply_predictor_count,
                        partial_hypo.score,
                        partial_hypo.trgt_sentence))
         first_expansion = True
@@ -214,13 +214,11 @@ class SimpleDFSDecoder(Decoder):
             list. A list of ``Hypothesis`` instances ordered by their
             score.
         """
-        if len(self.predictors) != 1:
-            logging.fatal("SimpleDFS only works with a single predictor!")
-        self.dfs_predictor = self.predictors[0][0]
+        self.dfs_predictor = self.predictor
         if self._min_length_ratio > 0.0:
             self._min_length = int(math.ceil(
               self._min_length_ratio * len(src_sentence))) + 1
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         self.best_score = self.get_lower_score_bound()
         self._dfs(PartialHypothesis())
         return self.get_full_hypos_sorted()
@@ -266,11 +264,11 @@ class SimpleLengthDFSDecoder(Decoder):
                                               generated so far. 
         """
         partial_hypo_length = len(partial_hypo.trgt_sentence)
-        self.apply_predictors_count += 1
+        self.apply_predictor_count += 1
         posterior = self.dfs_predictor.predict_next()
         logging.debug("Expand: exp: %d partial_score: "
                       "%f sentence: %s" %
-                      (self.apply_predictors_count,
+                      (self.apply_predictor_count,
                        partial_hypo.score,
                        partial_hypo.trgt_sentence))
         # Check EOS
@@ -286,7 +284,7 @@ class SimpleLengthDFSDecoder(Decoder):
                           (partial_hypo_length,
                            self.len_lower_bounds[partial_hypo_length],
                            eos_hypo.score,
-                           self.apply_predictors_count))
+                           self.apply_predictor_count))
             self.len_lower_bounds[partial_hypo_length] = eos_hypo.score
             self.len_best_hypos[partial_hypo_length] = eos_hypo
             self._update_min_lower_bounds()
@@ -328,10 +326,8 @@ class SimpleLengthDFSDecoder(Decoder):
             list. A list of ``Hypothesis`` instances ordered by their
             score.
         """
-        if len(self.predictors) != 1:
-            logging.fatal("SimpleDFS only works with a single predictor!")
-        self.dfs_predictor = self.predictors[0][0]
-        self.initialize_predictors(src_sentence)
+        self.dfs_predictor = self.predictor
+        self.initialize_predictor(src_sentence)
         lower_bounds = self.all_lower_bounds[self.current_sen_id]
         self.max_len = max(int(el[0]) for el in lower_bounds)
         self.len_enabled = np.zeros((self.max_len + 1,), np.bool)

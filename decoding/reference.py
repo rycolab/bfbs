@@ -20,7 +20,7 @@ class ReferenceDecoder(Decoder):
         
     def decode(self, src_sentence, trgt_sentence):
         self.trgt_sentence = trgt_sentence + [utils.EOS_ID]
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
 
         hypo = PartialHypothesis(self.get_predictor_states())
         while hypo.get_last_word() != utils.EOS_ID:
@@ -35,7 +35,7 @@ class ReferenceDecoder(Decoder):
 
         self.set_predictor_states(hypo.predictor_states)
         next_word = self.trgt_sentence[len(hypo.trgt_sentence)]
-        ids, posterior, _ = self.apply_predictors()
+        ids, posterior, _ = self.apply_predictor()
         ind = utils.binary_search(ids, k)
 
         max_score = utils.max_(posterior)

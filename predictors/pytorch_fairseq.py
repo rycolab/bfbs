@@ -85,8 +85,6 @@ class FairseqPredictor(Predictor):
         self.src_vocab_size = len(source_dict) + 1
         self.trg_vocab_size = len(target_dict) + 1
         self.pad_id = target_dict.pad()
-        self.eos_id = target_dict.eos()
-        self.bos_id = target_dict.bos()
          # Load ensemble
         self.models = self.load_models(model_path, task)
         self.model = EnsembleModel(self.models)
@@ -129,7 +127,7 @@ class FairseqPredictor(Predictor):
     
     def initialize(self, src_sentence):
         """Initialize source tensors, reset consumed."""
-        self.consumed = []
+
         src_tokens = torch.LongTensor([
             utils.oov_to_unk(src_sentence + [utils.EOS_ID],
                              self.src_vocab_size)])
@@ -140,18 +138,27 @@ class FairseqPredictor(Predictor):
         self.encoder_outs = self.model.forward_encoder({
             'src_tokens': src_tokens,
             'src_lengths': src_lengths})
+
         self.consumed = [utils.GO_ID or utils.EOS_ID]
+        self.reset_states()
 
-        # Reset incremental states
-
-        for model in self.models:
-            self.model.incremental_states[model] = {}
+    def reset_states(self, states=None):
+         # Reset incremental states
+        if states is not None:
+            assert len(states) == len(self.models)
+        for i,model in enumerate(self.models):
+            self.model.incremental_states[model] = {} if states is None else states[i]
    
     def consume(self, word, i=None):
         """Append ``word`` to the current history."""
         self.consumed.append(word) if i is None else self.consumed[i].append(word)
     
     def get_empty_str_prob(self):
+        return self.get_initial_dist()[utils.EOS_ID].item()
+
+    def get_initial_dist(self):
+        old_states = [self.model.incremental_states[m] for m in self.models]
+        self.reset_states()
         inputs = torch.LongTensor([[utils.GO_ID or utils.EOS_ID]])
         if self.use_cuda:
             inputs = inputs.cuda()
@@ -159,7 +166,8 @@ class FairseqPredictor(Predictor):
         lprobs, _ = self.model.forward_decoder(
             inputs, self.encoder_outs
         )
-        return lprobs[0,self.eos_id].item()
+        self.reset_states(old_states)
+        return np.array(lprobs[0].cpu() if self.use_cuda else lprobs[0], dtype=np.float64)
 
 
     def get_state(self):

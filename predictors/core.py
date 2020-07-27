@@ -156,7 +156,6 @@ class Predictor(Observer):
         return NEG_INF
 
     def get_empty_str_prob(self):
-       
         return NEG_INF
     
     def initialize(self, src_sentence):

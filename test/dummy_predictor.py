@@ -5,6 +5,7 @@ import utils
 from predictors.core import Predictor
 
 import numpy as np
+from scipy.stats import entropy
 import copy
 import hashlib
 
@@ -26,9 +27,8 @@ class DummyPredictor(Predictor):
         super(DummyPredictor, self).__init__()
         self.vocab_size = vocab_size
         self.rg = np.random.default_rng(seed=seed)
-        self.eos_id = utils.EOS_ID
         self.num_dists = 1000
-        self.model_temperature = 0.2
+        self.model_temperature = 0.5
         # Create fake distributions with random number generator
         self.prob_dists = [self.rg.standard_normal(self.vocab_size) for i in range(self.num_dists)]
 
@@ -36,12 +36,12 @@ class DummyPredictor(Predictor):
         """Fetch posterior[utils.UNK_ID]"""
         return utils.common_get(posterior, utils.UNK_ID, utils.NEG_INF)
                 
-    def predict_next(self):
-        hash_rep = str(self.src) + str(self.consumed)
+    def predict_next(self, prefix=None):
+        hash_rep = str(self.src) + str(self.consumed if prefix is None else prefix)
         hash_key = int(hashlib.sha256(hash_rep.encode('utf-8')).hexdigest(), 16) 
         dist_key = hash_key % self.num_dists
         unnorm_posterior = copy.copy(self.prob_dists[dist_key])
-        unnorm_posterior[self.eos_id] -= unnorm_posterior.max()/max(len(self.consumed),1)
+        #unnorm_posterior[self.eos_id] -= unnorm_posterior.max()/max(len(self.consumed),1)
         return utils.log_softmax(unnorm_posterior, temperature=self.model_temperature)
     
     def initialize(self, src_sentence):
@@ -54,7 +54,10 @@ class DummyPredictor(Predictor):
         self.consumed.append(word)
     
     def get_empty_str_prob(self):
-        pass
+        return self.get_initial_dist()[utils.EOS_ID].item()
+
+    def get_initial_dist(self):
+        return self.predict_next(prefix=[])
 
     def get_state(self):
         """The predictor state is the complete history."""

@@ -16,9 +16,9 @@
 
 """This module is the bridge between the command line configuration of
 the decode.py script and the SGNMT software architecture consisting of
-decoders, predictors, and output handlers. A common use case is to call
+decoders, predictor, and output handlers. A common use case is to call
 `create_decoder()` first, which reads the SGNMT configuration and loads
-the right predictors and decoding strategy with the right arguments.
+the right predictor and decoding strategy with the right arguments.
 The actual decoding is implemented in `do_decode()`. See `decode.py`
 to learn how to use this module.
 """
@@ -33,6 +33,7 @@ import uuid
 import numpy as np
 import random
 import string
+import collections
 
 import utils
 import sampling_utils
@@ -50,7 +51,8 @@ from decoding.greedy import GreedyDecoder
 from decoding.swor import BasicSworDecoder, \
                             MemEfficientSworDecoder, \
                             SworDecoder, \
-                            CPSworDecoder
+                            CPSworDecoder, \
+                            PSworDecoder
 from output import TextOutputHandler, \
                              NBestOutputHandler, \
                              NBestSeparateOutputHandler, \
@@ -103,26 +105,26 @@ def base_init(new_args):
     # Set reserved word IDs
     utils.switch_to_fairseq_indexing()
 
-def add_predictors(decoder):
-    """Adds all enabled predictors to the ``decoder``. This function 
+def add_predictor(decoder):
+    """Adds all enabled predictor to the ``decoder``. This function 
     makes heavy use of the global ``args`` which contains the
-    SGNMT configuration. Particularly, it reads out ``args.predictors``
+    SGNMT configuration. Particularly, it reads out ``args.predictor``
     and adds appropriate instances to ``decoder``.
     TODO: Refactor this method as it is waaaay tooooo looong
     
     Args:
         decoder (Decoder):  Decoding strategy, see ``create_decoder()``.
-            This method will add predictors to this instance with
+            This method will add predictor to this instance with
             ``add_predictor()``
     """
     
     pred_weight = 1.0
-    p = DummyPredictor(vocab_size=10)
-    decoder.add_predictor("dummy", p, pred_weight)
+    p = DummyPredictor(vocab_size=20)
+    decoder.add_predictor("dummy", p)
 
 def create_decoder():
     """Creates the ``Decoder`` instance. This specifies the search 
-    strategy used to traverse the space spanned by the predictors. This
+    strategy used to traverse the space spanned by the predictor. This
     method relies on the global ``args`` variable.
     
     TODO: Refactor to avoid long argument lists
@@ -130,7 +132,7 @@ def create_decoder():
     Returns:
         Decoder. Instance of the search strategy
     """
-    # Create decoder instance and add predictors
+    # Create decoder instance and add predictor
     decoder = None
     try:
         if args.decoder == "greedy":
@@ -161,6 +163,8 @@ def create_decoder():
             decoder = SworDecoder(args)
         elif args.decoder == "cp_swor":
             decoder = CPSworDecoder(args)
+        elif args.decoder == "p_swor":
+            decoder = PSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
@@ -171,11 +175,11 @@ def create_decoder():
                                             traceback.format_exc()))
     if decoder is None:
         sys.exit("Could not initialize decoder.")
-    add_predictors(decoder)
+    add_predictor(decoder)
     return decoder
 
 
-def _generate_dummy_hypo(predictors):
+def _generate_dummy_hypo():
     return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
 def randomString(stringLength=5):
@@ -200,7 +204,7 @@ def do_decode(decoder,
                                source sentences with word indices to 
                                translate (e.g. '1 123 432 2')
     """
-    if not decoder.has_predictors():
+    if not decoder.has_predictor():
         logging.fatal("Terminated due to an error in the "
                       "predictor configuration.")
         return
@@ -208,12 +212,11 @@ def do_decode(decoder,
     
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
-    sen_indices = []
     src_sentences = [randomString(test_str_length) for i in range(10)]
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
         logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, ''.join(src)))
-        decoder.apply_predictors_count = 0
+        decoder.apply_predictor_count = 0
         start_hypo_time = time.time()
         hypos = decoder.decode(src)
         all_hypos.append(hypos)
@@ -222,20 +225,22 @@ def do_decode(decoder,
             logging.info("Stats (ID: %d): score=<not-found> "
                      "num_expansions=%d "
                      "time=%.2f" % (sen_idx+1,
-                                    decoder.apply_predictors_count,
+                                    decoder.apply_predictor_count,
                                     time.time() - start_hypo_time))
-            hypos = [_generate_dummy_hypo(decoder.predictors)]
+            hypos = [_generate_dummy_hypo()]
         
         for logged_hypo in sorted(hypos, reverse=True)[:num_log]:
             logging.info("Decoded (ID: %d): %s" % (
                     sen_idx+1,
                     logged_hypo.trgt_sentence))
             logging.info("Stats (ID: %d): score=%f "
+                        "inc=%f "
                          "num_expansions=%d "
                          "time=%.2f " 
                          "perplexity=%.2f"% (sen_idx+1,
                                         logged_hypo.total_score,
-                                        decoder.apply_predictors_count,
+                                        logged_hypo.base_score,
+                                        decoder.apply_predictor_count,
                                         time.time() - start_hypo_time,
                                         utils.perplexity(logged_hypo.score_breakdown)))
     return src_sentences, all_hypos
@@ -285,9 +290,8 @@ def test_sampling():
         return sum(partition)
 
     for i in range(100):
-        N = np.random.randint(2,100)
+        N = np.random.randint(2,20)
         k = np.random.randint(1,N)
-        print(N,k)
         lambdas = np.random.uniform(size=N)
         log_lambdas = np.log(lambdas)
         
@@ -296,21 +300,6 @@ def test_sampling():
         brute_partition = partition_brute(lambdas,k)
         assert_equal(brute_partition, elem_polynomial_partition, 'standard elementary polynomial')
         assert_equal(np.log(brute_partition), log_elem_polynomial_partition, 'log elementary polynomial')
-        #test_inclusion(log_lambdas - np.max(log_lambdas), k)
-
-def test_inclusion(log_lambdas, k):
-    N=len(log_lambdas)
-    E = sampling_utils.log_elem_polynomials(log_lambdas, k)
-    threshes = []
-    for n in range(N,0,-1):
-        u = np.random.uniform()
-        thresh = log_lambdas[n-1] + E[k-1, n-1] - E[k, n]
-        threshes.append(thresh)
-        if np.log(u) < thresh:
-            k -= 1
-            if k == 0:
-                break
-    print(threshes)
 
 
 args = get_args()

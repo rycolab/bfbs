@@ -69,7 +69,7 @@ class AstarDecoder(Decoder):
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using A* search. """
-        self.initialize_predictors(src_sentence)
+        self.initialize_predictor(src_sentence)
         open_set = []
         best_score = self.get_lower_score_bound()
         heappush(open_set, (0.0,
@@ -81,14 +81,14 @@ class AstarDecoder(Decoder):
             logging.debug("Expand (est=%f score=%f exp=%d best=%f): sentence: %s"
                           % (-c, 
                              hypo.score, 
-                             self.apply_predictors_count, 
+                             self.apply_predictor_count, 
                              best_score, 
                              hypo.trgt_sentence))
             if hypo.get_last_word() == utils.EOS_ID: # Found best hypothesis
                 if hypo.score > best_score:
                     logging.debug("New best hypo (score=%f exp=%d): %s" % (
                             hypo.score,
-                            self.apply_predictors_count,
+                            self.apply_predictor_count,
                             ' '.join([str(w) for w in hypo.trgt_sentence])))
                     best_score = hypo.score
                 self.add_full_hypo(hypo.generate_full_hypothesis())
@@ -99,7 +99,7 @@ class AstarDecoder(Decoder):
             if not hypo.word_to_consume is None: # Consume if cheap expand
                 self.consume(hypo.word_to_consume)
                 hypo.word_to_consume = None
-            posterior,score_breakdown = self.apply_predictors()
+            posterior,score_breakdown = self.apply_predictor()
             hypo.predictor_states = self.get_predictor_states()
             for trgt_word in posterior: # Estimate future cost, add to heap
                 next_hypo = hypo.cheap_expand(trgt_word, posterior[trgt_word],

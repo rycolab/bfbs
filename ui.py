@@ -230,7 +230,8 @@ def get_parser():
                                  'basic_swor',
                                  'mem_swor',
                                  'alt_swor',
-                                 'cp_swor'],
+                                 'cp_swor',
+                                 'p_swor'],
                         help="Strategy for traversing the search space which "
                         "is spanned by the predictors.\n\n"
                         "* 'greedy': Greedy decoding (similar to beam=1)\n"

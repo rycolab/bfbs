@@ -44,7 +44,8 @@ from decoding.sampling import SamplingDecoder
 from decoding.swor import BasicSworDecoder, \
                             MemEfficientSworDecoder, \
                             SworDecoder, \
-                            CPSworDecoder
+                            CPSworDecoder, \
+                            PSworDecoder
 from decoding.dfs import DFSDecoder, \
                                    SimpleDFSDecoder, \
                                    SimpleLengthDFSDecoder
@@ -107,7 +108,7 @@ def base_init(new_args):
 
 
 
-def add_predictors(decoder):
+def add_predictor(decoder):
     """Adds all enabled predictors to the ``decoder``. This function 
     makes heavy use of the global ``args`` which contains the
     SGNMT configuration. Particularly, it reads out ``args.predictors``
@@ -124,19 +125,20 @@ def add_predictors(decoder):
         logging.fatal("Require at least one predictor! See the --predictors "
                       "argument for more information.")
     
-    
-    pred_weight = 1.0
+    if len(preds) > 1:
+        logging.fatal("Only 1 predictor supported at the moment")
+
+    pred = preds[0]
     try:
-        for idx, pred in enumerate(preds): # Add predictors one by one
-            if pred == "fairseq":
-                p = FairseqPredictor(args.fairseq_path,
-                                     args.fairseq_user_dir,
-                                     args.fairseq_lang_pair,
-                                     args.n_cpu_threads)
-            
-            decoder.add_predictor(pred, p, pred_weight)
-            logging.info("Initialized predictor {} (weight: {})".format(
-                             pred, pred_weight))
+        if pred == "fairseq":
+            p = FairseqPredictor(args.fairseq_path,
+                                 args.fairseq_user_dir,
+                                 args.fairseq_lang_pair,
+                                 args.n_cpu_threads)
+        
+        decoder.add_predictor(pred, p)
+        logging.info("Initialized predictor {}".format(
+                         pred))
     except IOError as e:
         logging.fatal("One of the files required for setting up the "
                       "predictors could not be read: %s" % e)
@@ -162,7 +164,7 @@ def add_predictors(decoder):
                       "dictors: %s Stack trace: %s" % (sys.exc_info()[0],
                                                        e,
                                                        traceback.format_exc()))
-        decoder.remove_predictors()
+        decoder.remove_predictor()
 
 
 def create_decoder():
@@ -206,6 +208,8 @@ def create_decoder():
             decoder = SworDecoder(args)
         elif args.decoder == "cp_swor":
             decoder = CPSworDecoder(args)
+        elif args.decoder == "p_swor":
+            decoder = PSworDecoder(args)
         else:
             logging.fatal("Decoder %s not available. Please double-check the "
                           "--decoder parameter." % args.decoder)
@@ -216,7 +220,7 @@ def create_decoder():
                                             traceback.format_exc()))
     if decoder is None:
         sys.exit("Could not initialize decoder.")
-    add_predictors(decoder)
+    add_predictor(decoder)
     return decoder
 
 
@@ -357,7 +361,7 @@ def _postprocess_complete_hypos(hypos):
     return hypos
 
 
-def _generate_dummy_hypo(predictors):
+def _generate_dummy_hypo():
     return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
 
@@ -378,7 +382,7 @@ def do_decode(decoder,
                                source sentences with word indices to 
                                translate (e.g. '1 123 432 2')
     """
-    if not decoder.has_predictors():
+    if not decoder.has_predictor():
         logging.fatal("Terminated due to an error in the "
                       "predictor configuration.")
         return
@@ -405,7 +409,7 @@ def do_decode(decoder,
             logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, src_print))
             src = io_utils.encode(src)
             start_hypo_time = time.time()
-            decoder.apply_predictors_count = 0
+            decoder.apply_predictor_count = 0
             if trgt_sentences:
                 hypos = decoder.decode(src, io_utils.encode_trg(trgt_sentences[sen_idx]))
             else:
@@ -415,9 +419,9 @@ def do_decode(decoder,
                 logging.info("Stats (ID: %d): score=<not-found> "
                          "num_expansions=%d "
                          "time=%.2f" % (sen_idx+1,
-                                        decoder.apply_predictors_count,
+                                        decoder.apply_predictor_count,
                                         time.time() - start_hypo_time))
-                hypos = [_generate_dummy_hypo(decoder.predictors)]
+                hypos = [_generate_dummy_hypo()]
             
             hypos = _postprocess_complete_hypos(hypos)
             for logged_hypo in hypos[:num_log]:
@@ -429,7 +433,7 @@ def do_decode(decoder,
                              "time=%.2f " 
                              "perplexity=%.2f"% (sen_idx+1,
                                             logged_hypo.total_score,
-                                            decoder.apply_predictors_count,
+                                            decoder.apply_predictor_count,
                                             time.time() - start_hypo_time,
                                             utils.perplexity(logged_hypo.score_breakdown)))
 
@@ -481,7 +485,7 @@ def do_decode(decoder,
             try:
                 # Write text output as we go
                 if text_output_handler:
-                    hypos = [_generate_dummy_hypo(decoder.predictors)]
+                    hypos = [_generate_dummy_hypo()]
                     text_output_handler.write_hypos([hypos])
             except IOError as e:
                 logging.error("I/O error %d occurred when creating output files: %s"
