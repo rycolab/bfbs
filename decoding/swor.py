@@ -11,6 +11,7 @@ from decoding.core import Decoder, PartialHypothesis
 
 
 class BasicSworDecoder(Decoder):
+    name = "basic_swor"
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -27,7 +28,7 @@ class BasicSworDecoder(Decoder):
         self.early_stopping = decoder_args.early_stopping
         assert not self.gumbel
         
-    def decode(self, src_sentence):
+    def decode(self, src_sentence, seed=0):
         self.initialize_predictor(src_sentence)
         self.covered_lprob = utils.NEG_INF
 
@@ -36,7 +37,7 @@ class BasicSworDecoder(Decoder):
                 logging.warn("Samples cover 100% of probability. Behavior beyond this point is undefined")
             self.reset_predictor(src_sentence)
             hypo = PartialHypothesis(self.get_predictor_states())
-            hypo, score = self._expand_hypo(hypo, seed=len(self.full_hypos))
+            hypo, score = self._expand_hypo(hypo, seed=seed+len(self.full_hypos))
             self.add_full_hypo(hypo.generate_full_hypothesis())
             self.covered_lprob = utils.log_add(self.covered_lprob, score)
             
@@ -97,6 +98,7 @@ class BasicSworDecoder(Decoder):
 
 
 class SworDecoder(BasicSworDecoder):
+    name = "swor"
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -145,7 +147,7 @@ class SworDecoder(BasicSworDecoder):
 
 
 class MemEfficientSworDecoder(BasicSworDecoder):
-    
+    name = "mem_eff_swor"
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -210,6 +212,7 @@ class MemEfficientSworDecoder(BasicSworDecoder):
 
 
 class CPSworDecoder(Decoder):
+    name = "cp_swor"
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -226,9 +229,8 @@ class CPSworDecoder(Decoder):
         self.early_stopping = decoder_args.early_stopping
         self.sample_beam = self.nbest
         assert not self.gumbel
-        self.seed=0
     
-    def decode(self, src_sentence):
+    def decode(self, src_sentence, seed=0):
         self.initialize_predictor(src_sentence)
         self.covered_lprob = utils.NEG_INF
         
@@ -236,53 +238,35 @@ class CPSworDecoder(Decoder):
         self.beam_prob = 0.
         self.sample_beam = self.nbest
         hypos = [PartialHypothesis(self.get_predictor_states())]
-        old_hypos = []
+        #old_hypos = []
 
-        while not self._all_eos(hypos):
-            if it > self.max_len: 
-                break
+        while not self._all_eos(hypos) and it < self.max_len:
             it += 1
             next_hypos = []
             next_scores = []
             for hypo in hypos:
                 if hypo.get_last_word() == utils.EOS_ID:
-                    next_hypos.append(next_hypo)
+                    next_hypos.append(hypo)
                     next_scores.append(self.get_adjusted_score(hypo))
                     continue 
-                for next_hypo in self._expand_hypo(hypo):
+                for next_hypo in self._expand_hypo(hypo, self.sample_beam):
                     next_scores.append(self.get_adjusted_score(next_hypo))
                     next_hypos.append(next_hypo)
 
-            hypos = self._get_next_hypos(next_hypos, next_scores)
-            old_hypos.extend([h.score for h in next_hypos if h not in hypos])
+            hypos = self._get_next_hypos(next_hypos, next_scores, seed=seed)
+            #old_hypos.extend([h.score for h in next_hypos if h not in hypos])
 
         assert self.beam_prob <= 1
-        for i, hypo in enumerate(hypos):
-            if hypo.get_last_word() == utils.EOS_ID:
-                assert(hypo.base_score <= 0.)
-                hypo.score = self.get_adjusted_score(hypo)
-                self.add_full_hypo(hypo.generate_full_hypothesis()) 
+        return self.get_full_hypos_sorted(hypos)
 
-        if len(self.full_hypos) < self.nbest:
-            if not self.full_hypos:
-                logging.warn("No complete hypotheses found")
-            logging.warn("Adding incomplete hypotheses as candidates")
-            for hypo in hypos:
-                if hypo.get_last_word() != utils.EOS_ID:
-                    hypo.score = self.get_adjusted_score(hypo)
-                    self.add_full_hypo(hypo.generate_full_hypothesis()) 
-            
-        #self.seed += 1
-        return self.get_full_hypos_sorted()
-
-    def _get_next_hypos(self, hypos, scores):
+    def _get_next_hypos(self, hypos, scores, seed=0):
         # faster to append to python list then convert to np array
         scores = np.array(scores)
         inds, cur_beam_prob, inc_probs = sampling_utils.log_sample_k_dpp(scores, 
-                                                        self.sample_beam, seed=self.seed)
+                                                        self.sample_beam, seed=seed)
         self.beam_prob += cur_beam_prob
         for i in inds:
-            hypos[i].base_score += inc_probs[i]
+            hypos[i].base_score += min(0.,inc_probs[i])
         return [hypos[ind] for ind in inds]
 
     def _all_eos(self, hypos):
@@ -291,7 +275,7 @@ class CPSworDecoder(Decoder):
 
 
 class PSworDecoder(CPSworDecoder):
-    
+    name = "p_swor"
     def __init__(self, decoder_args):
         """Creates a new SWOR decoder instance. The following values are
         fetched from `decoder_args`:
@@ -305,57 +289,40 @@ class PSworDecoder(CPSworDecoder):
         """
         super(PSworDecoder, self).__init__(decoder_args)
 
-    def decode(self, src_sentence):
-
+    def decode(self, src_sentence, seed=0):
         self.initialize_predictor(src_sentence)
-        initial_dist = self.get_initial_dist()
-        if self.temperature < 1:
-            intial_dist = utils.log_softmax(initial_dist, temperature=self.temperature)
-        desired_k = np.power(self.nbest, 1./self.max_len)
-
-        self.c = sampling_utils.get_const(initial_dist, desired_k)
-        self.covered_lprob = utils.NEG_INF
+        desired_k = self.nbest#np.power(self.nbest, 1./self.max_len)
         
-        self.it = 0
+        it = 0
         hypos = [PartialHypothesis(self.get_predictor_states())]
-
-        while not self._all_eos(hypos):
-            if self.it > self.max_len: 
-                break
-            self.it += 1
+        hypos[0].base_score = 1.
+        while not self._all_eos(hypos) and it < self.max_len:
+            it += 1
             next_hypos = []
             next_scores = []
             for hypo in hypos:
                 if hypo.get_last_word() == utils.EOS_ID:
                     self.add_full_hypo(hypo.generate_full_hypothesis()) 
                     continue 
-                for next_hypo in self._expand_hypo(hypo):
-                    next_scores.append(next_hypo.score_breakdown[-1])
+                expansions, dist = self._expand_hypo(hypo, return_dist=True)
+                c = sampling_utils.get_const(dist + hypo.score, desired_k)
+                c /= hypo.base_score
+                c = np.power(c, 1./(self.max_len - len(hypo)))
+                hypo.base_score *= c
+                for next_hypo in expansions:
+                    next_scores.append(next_hypo.score_breakdown[-1] + np.log(c))
                     next_hypos.append(next_hypo)
 
-            hypos = self._get_next_hypos(next_hypos, next_scores)
-
-        for i, hypo in enumerate(hypos):
-            if hypo.get_last_word() == utils.EOS_ID:
-                assert(hypo.base_score <= 0.)
-                hypo.score = self.get_adjusted_score(hypo)
-                self.add_full_hypo(hypo.generate_full_hypothesis()) 
-
-        if len(self.full_hypos) < self.nbest:
-            if not self.full_hypos:
-                logging.warn("No complete hypotheses found")
-            else:
-                logging.warn("Full k-sized set not sampled")
+            hypos = self._get_next_hypos(next_hypos, next_scores, seed=seed)
             
-        #self.seed += 1
-        return self.get_full_hypos_sorted()
+        return self.get_full_hypos_sorted(hypos)
     
 
-    def _get_next_hypos(self, hypos, scores):
+    def _get_next_hypos(self, hypos, scores, seed=0):
         # faster to append to python list then convert to np array
         scores = np.array(scores)
-        inds, inc_probs = sampling_utils.log_sample_poisson(scores, self.c,
-                                                        normalize=False, seed=self.seed)
+        inds, inc_probs = sampling_utils.log_sample_poisson(scores, 
+                                                normalize=False, seed=seed)
         for i in inds:
             hypos[i].base_score += min(0.,inc_probs[i])
         return [hypos[ind] for ind in inds]

@@ -17,7 +17,7 @@
 """Implementation of the greedy search strategy """
 
 import utils
-from decoding.core import Decoder, Hypothesis
+from decoding.core import Decoder, PartialHypothesis
 import logging
 
 
@@ -28,7 +28,7 @@ class GreedyDecoder(Decoder):
     for more complex decoders. The greedy decoder can be imitated with
     the ``BeamDecoder`` with beam size 1.
     """
-    
+    name = "greedy"
     def __init__(self, decoder_args):
         """Initialize the greedy decoder. """
         super(GreedyDecoder, self).__init__(decoder_args)
@@ -47,18 +47,19 @@ class GreedyDecoder(Decoder):
         Returns:
             list. A list of a single best ``Hypothesis`` instance."""
         self.initialize_predictor(src_sentence)
-        trgt_sentence = []
-        score_breakdown = []
-        trgt_word = None
-        score = 0.0
-        while trgt_word != utils.EOS_ID and len(trgt_sentence) <= self.max_len:
-            posterior,breakdown = self.apply_predictor(1)
-            trgt_word = utils.argmax(posterior)
-            score += posterior[trgt_word]
-            trgt_sentence.append(trgt_word)
-            logging.debug("Partial hypothesis (%f): %s" % (
-                    score, " ".join([str(i) for i in trgt_sentence]))) 
-            score_breakdown.append(breakdown[trgt_word])
+        hypothesis = PartialHypothesis(self.get_predictor_states())
+        while hypothesis.get_last_word() != utils.EOS_ID and len(hypothesis) < self.max_len:
+            ids, posterior, original_posterior = self.apply_predictor(
+                                                    hypothesis if self.gumbel else None, 1)
+            trgt_word = ids[0]
+            if self.gumbel:
+                hypothesis.base_score += original_posterior[0]
+                hypothesis.score_breakdown.append(original_posterior[0])
+            else: 
+                hypothesis.score += posterior[0]
+                hypothesis.score_breakdown.append(posterior[0])
+            hypothesis.trgt_sentence.append(trgt_word)
+            
             self.consume(trgt_word)
-        self.add_full_hypo(Hypothesis(trgt_sentence, score, score_breakdown))
+        self.add_full_hypo(hypothesis.generate_full_hypothesis())
         return self.full_hypos

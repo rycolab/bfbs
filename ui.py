@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 import platform
+import decoding
 
 import utils
 
@@ -216,44 +217,12 @@ def get_parser():
     
     ## Decoding options
     group = parser.add_argument_group('Decoding options')
-    group.add_argument("--decoder", default=None,
-                        choices=['greedy',
-                                 'beam',
-                                 'dfs',
-                                 'simpledfs',
-                                 'simplelendfs',
-                                 'astar',
-                                 'dijkstra',
-                                 'dijkstra_ts',
-                                 'reference',
-                                 'sampling',
-                                 'basic_swor',
-                                 'mem_swor',
-                                 'alt_swor',
-                                 'cp_swor',
-                                 'p_swor'],
+    group.add_argument("--decoder", default=None, choices=decoding.DECODER_REGISTRY.keys(),
                         help="Strategy for traversing the search space which "
-                        "is spanned by the predictors.\n\n"
-                        "* 'greedy': Greedy decoding (similar to beam=1)\n"
-                        "* 'beam': beam search like in Bahdanau et al, 2015\n"
-                        "* 'dfs': Depth-first search. This should be used for "
-                        "exact decoding or the complete enumeration of the "
-                        "search space, but it cannot be used if the search "
-                        "space is too large (like for unrestricted NMT) as "
-                        "it performs exhaustive search. If you have not only "
-                        "negative predictor scores, set --early_stopping to "
-                        "false.\n"
-                        "* 'simpledfs': Depth-first search which works with "
-                        "only one predictor. Good for exhaustive search in "
-                        "combination with --score_lower_bounds_file from a "
-                        "previous (beam) run.\n"
-                        "* 'simplelendfs': simpledfs variant with length-"
-                        "dependent lower bounds.\n"
-                        "* 'astar': A* search. The heuristic function is "
-                        "configured using the --heuristics options.")
+                        "is spanned by the predictors.\n")
     group.add_argument("--beam", default=0, type=int,
                         help="Size of beam. Only used if --decoder is set to "
-                        "'beam' or 'astar'. For 'astar' it limits the capacity"
+                        "'beam' or 'dijkstra'. For 'dijkstra' it limits the capacity"
                         " of the queue. Use --beam 0 for unlimited capacity.")
     group.add_argument("--allow_unk_in_output", default=True, type='bool',
                         help="If false, remove all UNKs in the final "
@@ -287,15 +256,17 @@ def get_parser():
                         "score. DO NOT USE early stopping in combination with "
                         "the dfs or restarting decoder when your predictors "
                         "can produce positive scores!")
-    group.add_argument("--decoder_diversity_factor", default=-1.0, type=float,
-                       help="If this is greater than zero, promote diversity "
-                       "between active hypotheses during decoding. The exact "
-                       "way of doing this depends on --decoder:\n"
-                       "* The 'beam' decoder roughly follows the approach in "
-                       "Li and Jurafsky, 2016\n"
-                       "* The 'bucket' decoder reorders the hypotheses in a "
-                       "bucket by penalizing hypotheses with the number of "
-                       "expanded hypotheses from the same parent.")
+    group.add_argument("--diversity_groups", default=1, type=int,
+                       help="If this is greater than one, promote diversity "
+                       "between groups of hypotheses as in Vijayakumar et. "
+                       "al. (2016). Only compatible with 'diverse_beam' decoder. "
+                       "They found diversity_groups = beam size to be most "
+                       "effective.")
+    group.add_argument("--diversity_reward", default=0.5, type=float,
+                       help="If this is greater than zero, add reward for diversity "
+                       "between groups as in Vijayakumar et. al. (2016). Only "
+                       "compatible with 'diverse_beam' decoder. Setting value "
+                       "equal to 0 recovers standard beam search.")
     group.add_argument("--simplelendfs_lower_bounds_file", default="",
                         help="Path to a file with length dependent lower "
                         "lower bounds for the simplelendfs decoder. Each line "
@@ -310,6 +281,11 @@ def get_parser():
                         "random sampling")
     group.add_argument('--temperature', default=1., type=float, metavar='N',
                        help='temperature for generation')
+    group.add_argument('--nucleus_threshold', default=0.95, type=float, metavar='N',
+                       help='implementation of Holtzman et. al 2019 p-nucleus sampling. '
+                       "Value specifies probability core from which to consider "
+                       "top items for sampling. Only compatible with 'sampling' "
+                       "decoder.")
     
 
     ## Output options
@@ -332,17 +308,11 @@ def get_parser():
                         "scores for each predictor.\n"
                         "* 'nbest_sep': nbest translations in plain text "
                         "output to individual files based off of 'output_path'\n"
-                        "* 'fst': Translation lattices in OpenFST "
-                        "format with sparse tuple arcs.\n"
-                        "* 'sfst': Translation lattices in OpenFST "
-                        "format with standard arcs (i.e. combined scores).\n"
-                        "* 'timecsv': Generate CSV files with separate "
-                        "predictor scores for each time step.\n"
+                        "* 'score': writes scores of hypotheses to file; output "
+                        "is line-by-line.\n"
                         "* 'ngram': MBR-style n-gram posteriors.\n\n"
                         "For extract_scores_along_reference.py, select "
                         "one of the following output formats:\n"
-                        "* 'json': Dump data in pretty JSON format.\n"
-                        "* 'pickle': Dump data as binary pickle.\n"
                         "The path to the output files can be specified with "
                         "--output_path")
     group.add_argument("--remove_eos", default=True, type='bool',
@@ -377,10 +347,11 @@ def get_parser():
     group.add_argument("--bpe_codes", default="",
                         help="Must be set if preprocessing=bpe. Path to the "
                         "BPE codes file from Sennrich's subword_nmt.")
+    group.add_argument("--add_incomplete", default=False, type='bool',
+                        help="If nbest hypotheses are not found, add incomplete "
+                        "hypotheses to output")
     
     ## Predictor options
-    
-    # General
     group = parser.add_argument_group('General predictor options')
     group.add_argument("--predictors", default="fairseq",
                         help="Comma separated list of predictors. Predictors "
@@ -389,11 +360,6 @@ def get_parser():
                         "information like the source sentence. If vocabulary "
                         "sizes differ among predictors, we fill in gaps with "
                         "predictor UNK scores.:\n\n"
-                        "* 't2t': Tensor2Tensor predictor.\n"
-                        "         Options: t2t_usr_dir, t2t_model, "
-                        "t2t_problem, t2t_hparams_set, t2t_checkpoint_dir, "
-                        "pred_src_vocab_size, pred_trg_vocab_size\n"
-                        "checkpoint_dir, lexnizza_min_id\n"
                         "* 'fairseq': fairseq predictor.\n"
                         "         Options: fairseq_path, fairseq_user_dir, "
                         "fairseq_lang_pair, n_cpu_threads")    
@@ -444,7 +410,8 @@ def validate_args(args):
     if args.range and args.input_method == 'shell':
         logging.warn("The --range parameter can lead to unexpected "
                      "behavior in 'shell' mode.")
-        
+    
+    # TODO: add one for gumbels
     # Some common pitfalls
     sanity_check_failed = False
     if args.input_method == 'dummy' and args.max_len_factor < 10:

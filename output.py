@@ -25,9 +25,8 @@ compile with ``--enable_python``. Further information can be found here:
 http://www.openfst.org/twiki/bin/view/FST/PythonExtension 
 
 """
-
 from abc import abstractmethod
-import os
+import os, sys
 import errno
 import logging
 import utils
@@ -35,15 +34,8 @@ import io_utils
 import numpy as np
 import codecs
 from collections import defaultdict
-
-try:
-    import pywrapfst as fst
-except ImportError:
-    try:
-        import openfst_python as fst
-    except ImportError:
-        pass # Deal with it in decode.py
-
+import inspect
+import importlib
 
 def _mkdir(path, name):
     try:
@@ -81,8 +73,8 @@ class OutputHandler(object):
 
 class TextOutputHandler(OutputHandler):
     """Writes the first best hypotheses to a plain text file """
-    
-    def __init__(self, path):
+    name = 'text'
+    def __init__(self, path, args):
         """Creates a plain text output handler to write to ``path`` """
         super(TextOutputHandler, self).__init__()
         self.path = path
@@ -109,8 +101,8 @@ class TextOutputHandler(OutputHandler):
 
 class ScoreOutputHandler(OutputHandler):
     """Writes the first best hypotheses to a plain text file """
-    
-    def __init__(self, path):
+    name = 'score'
+    def __init__(self, path, args):
         """Creates a plain text output handler to write to ``path`` """
         super(ScoreOutputHandler, self).__init__()
         self.path = path
@@ -142,15 +134,15 @@ class ScoreOutputHandler(OutputHandler):
 class NBestSeparateOutputHandler(OutputHandler):
     """Produces n-best files with hypotheses at respecitve positions
     """
-    
-    def __init__(self, path, N):
+    name = 'nbest_sep'
+    def __init__(self, path, args):
         """
         Args:
             path (string):  Path to the n-best file to write
             N: n-best 
         """
         super(NBestSeparateOutputHandler, self).__init__()
-        self.paths = [path + '_' + str(i) + '.txt' for i in range(N)]
+        self.paths = [path + '_' + str(i) + '.txt' for i in range(max(args.nbest,1))]
         
     def write_hypos(self, all_hypos, sen_indices=None):
         """Writes the hypotheses in ``all_hypos`` to ``path`` """
@@ -181,8 +173,8 @@ class NBestOutputHandler(OutputHandler):
     with the index 0, but in SGNMT and HiFST we usually refer to the 
     first sentence with 1 (e.g. in lattice directories or --range)
     """
-    
-    def __init__(self, path, predictor_names):
+    name = 'nbest'
+    def __init__(self, path, args):
         """Creates a Moses n-best list output handler.
         
         Args:
@@ -195,7 +187,7 @@ class NBestOutputHandler(OutputHandler):
         self.path = path
         self.predictor_names = []
         name_count = {}
-        for name in predictor_names:
+        for name in utils.split_comma(args.predictors):
             if not name in name_count:
                 name_count[name] = 1
                 final_name = name
@@ -223,75 +215,6 @@ class NBestOutputHandler(OutputHandler):
                 idx += 1
 
 
-class TimeCSVOutputHandler(OutputHandler):
-    """Produces one CSV file for each sentence. The CSV files contain
-    the predictor score breakdown for each translation prefix length.
-    """
-    
-    def __init__(self, path, predictor_names):
-        """Creates a Moses n-best list output handler.
-        
-        Args:
-            path (string):  Path to the n-best file to write
-            predictor_names: Names of the predictors whose scores
-                             should be included in the score breakdown
-                             in the n-best list
-        """
-        super(TimeCSVOutputHandler, self).__init__()
-        self.path = path
-        self.file_pattern = path + "/%d.csv" 
-        self.predictor_names = []
-        name_count = {}
-        for name in predictor_names:
-            if not name in name_count:
-                name_count[name] = 1
-                final_name = name
-            else:
-                name_count[name] += 1
-                final_name = "%s%d" % (name, name_count[name])
-            self.predictor_names.append(final_name)
-        
-    def write_hypos(self, all_hypos, sen_indices):
-        """Writes ngram files for each sentence in ``all_hypos``.
-        
-        Args:
-            all_hypos (list): list of nbest lists of hypotheses
-            sen_indices (list): List of sentence indices (0-indexed)
-        
-        Raises:
-            OSError. If the directory could not be created
-            IOError. If something goes wrong while writing to the disk
-        """
-        _mkdir(self.path, "TimeCSV")
-        n_predictors = len(self.predictor_names)
-        placeholder = "\t-" * (n_predictors*2)
-        for sen_idx, hypos in zip(sen_indices, all_hypos):
-            sen_idx += 1
-            with open(self.file_pattern % sen_idx, "w") as f:
-                hypo_count = len(hypos)
-                # Headers
-                f.write("Time")
-                for i in range(hypo_count):
-                    f.write("".join(["\t%s-%d" % (n, i+1) 
-                                       for n in self.predictor_names]))
-                    f.write("".join(["\t%s-%d_weight" % (n, i+1) 
-                                       for n in self.predictor_names]))
-                f.write("\n")
-                max_len = max([len(hypo.trgt_sentence) for hypo in hypos])
-                for pos in range(max_len+1):
-                    f.write(str(pos))
-                    for hypo in hypos:
-                        if pos >= len(hypo.score_breakdown):
-                            f.write(placeholder)
-                        else:
-                            for pred_idx in range(n_predictors):
-                                acc_pred_score = sum([s[pred_idx][0] for s in hypo.score_breakdown[:pos+1]])
-                                f.write("\t%f" % acc_pred_score)
-                            for pred_idx in range(n_predictors):
-                                f.write("\t%f" % hypo.score_breakdown[pos][pred_idx][1])
-                    f.write("\n")
-
-
 class NgramOutputHandler(OutputHandler):
     """This output handler extracts MBR-style ngram posteriors from the 
     hypotheses returned by the decoder. The hypothesis scores are assumed to
@@ -299,8 +222,8 @@ class NgramOutputHandler(OutputHandler):
     valid distribution. The scores produced by the output handler are 
     probabilities of an ngram being in the translation.
     """
-    
-    def __init__(self, path, min_order, max_order):
+    name = 'ngram'
+    def __init__(self, path, args):
         """Creates an ngram output handler.
         
         Args:
@@ -310,8 +233,8 @@ class NgramOutputHandler(OutputHandler):
         """
         super(NgramOutputHandler, self).__init__()
         self.path = path
-        self.min_order = min_order
-        self.max_order = max_order
+        self.min_order = args.min_order
+        self.max_order = args.max_order
         self.file_pattern = path + "/%d.txt" 
       
     def write_hypos(self, all_hypos, sen_indices):
@@ -345,155 +268,13 @@ class NgramOutputHandler(OutputHandler):
                        [normed_scores[hypo_idx] for hypo_idx in hypo_indices]))
                     f.write("%s : %f\n" % (ngram, min(1.0, ngram_score)))
 
+OUTPUT_REGISTRY = {}
 
-def write_fst(f, path):
-    """Writes FST f to the file system after epsilon removal, determinization,
-    and minimization.
-    """
-    f.rmepsilon()
-    f = fst.determinize(f)
-    f.minimize()
-    f.write(path)
-
-
-class FSTOutputHandler(OutputHandler):
-    """This output handler creates FSTs with with sparse tuple arcs 
-    from the n-best lists from the decoder. The predictor scores are 
-    kept separately in the sparse tuples. Note that this means that 
-    the parameter ``--combination_scheme`` might not be visible in the 
-    lattices because predictor scores are not combined. The order in 
-    the sparse tuples corresponds to the order of the predictors in 
-    the ``--predictors`` argument.
-    
-    Note that the created FSTs use another ID for UNK to avoid 
-    confusion with the epsilon symbol used by OpenFST.
-    """
-    
-    def __init__(self, path, unk_id):
-        """Creates a sparse tuple FST output handler.
-        
-        Args:
-            path (string):  Path to the VECLAT directory to create
-            unk_id (int): Id which should be used in the FST for UNK
-        """
-        super(FSTOutputHandler, self).__init__()
-        self.path = path
-        self.unk_id = unk_id
-        self.file_pattern = path + "/%d.fst" 
-      
-    def write_weight(self, score_breakdown):
-        """Helper method to create the weight string """
-        els = ['0']
-        for (idx,score) in enumerate(score_breakdown):
-            els.append(str(idx+1))
-            # We need to take the negative here since the tropical
-            # FST arc type expects negative log probs instead of log probs
-            els.append(str(-score[0]))
-        return ','.join(els)
-
-    def write_hypos(self, all_hypos, sen_indices):
-        """Writes FST files with sparse tuples for each sentence in 
-        ``all_hypos``. The created lattices are not optimized in any
-        way: We create a distinct path for each entry in 
-        ``all_hypos``. We advise you to determinize/minimize them if 
-        you are planning to use them for further processing.
-        
-        Args:
-            all_hypos (list): list of nbest lists of hypotheses
-            sen_indices (list): List of sentence indices (0-indexed)
-        
-        Raises:
-            OSError. If the directory could not be created
-            IOError. If something goes wrong while writing to the disk
-        """
-        _mkdir(self.path, "FST")
-        for fst_idx, hypos in zip(sen_indices, all_hypos):
-            fst_idx += 1
-            c = fst.Compiler(arc_type="tropicalsparsetuple")
-            # state ID 0 is start, 1 is final state
-            next_free_id = 2
-            for hypo in hypos:
-                syms = hypo.trgt_sentence
-                # Connect with start node
-                c.write("0\t%d\t%d\t%d\n" % (next_free_id,
-                                             utils.GO_ID,
-                                             utils.GO_ID))
-                next_free_id += 1
-                for pos in range(len(hypo.score_breakdown)-1):
-                    c.write("%d\t%d\t%d\t%d\t%s\n" % (
-                            next_free_id-1, # last state id
-                            next_free_id, # next state id 
-                            syms[pos], syms[pos], # arc labels
-                            self.write_weight(hypo.score_breakdown[pos])))
-                    next_free_id += 1
-                # Connect with final node
-                c.write("%d\t1\t%d\t%d\t%s\n" % (
-                                next_free_id-1,
-                                utils.EOS_ID,
-                                utils.EOS_ID,
-                                self.write_weight(hypo.score_breakdown[-1])))
-            c.write("1\n") # Add final node
-            write_fst(c.compile(), self.file_pattern % fst_idx)
-
-
-class StandardFSTOutputHandler(OutputHandler):
-    """This output handler creates FSTs with standard arcs. In contrast
-    to ``FSTOutputHandler``, predictor scores are combined using 
-    ``--combination_scheme``.
-    
-    Note that the created FSTs use another ID for UNK to avoid 
-    confusion with the epsilon symbol used by OpenFST.
-    """
-    
-    def __init__(self, path, unk_id):
-        """Creates a standard arc FST output handler.
-        
-        Args:
-            path (string):  Path to the fst directory to create
-            unk_id (int): Id which should be used in the FST for UNK
-        """
-        super(StandardFSTOutputHandler, self).__init__()
-        self.path = path
-        self.unk_id = unk_id
-        self.file_pattern = path + "/%d.fst" 
-      
-    def write_hypos(self, all_hypos, sen_indices):
-        """Writes FST files with standard arcs for each
-        sentence in ``all_hypos``. The created lattices are not 
-        optimized in any way: We create a distinct path for each entry 
-        in ``all_hypos``. We advise you to determinize/minimize them if
-        you are planning to use them for further processing. 
-        
-        Args:
-            all_hypos (list): list of nbest lists of hypotheses
-            sen_indices (list): List of sentence indices (0-indexed)
-        
-        Raises:
-            OSError. If the directory could not be created
-            IOError. If something goes wrong while writing to the disk
-        """
-        _mkdir(self.path, "FST")
-        for fst_idx, hypos in zip(sen_indices, all_hypos):
-            fst_idx += 1
-            c = fst.Compiler()
-            # state ID 0 is start, 1 is final state
-            next_free_id = 2
-            for hypo in hypos:
-                # Connect with start node
-                c.write("0\t%d\t%d\t%d\t%f\n" % (next_free_id,
-                                                 utils.GO_ID,
-                                                 utils.GO_ID,
-                                                 -hypo.total_score))
-                next_free_id += 1
-                for sym in hypo.trgt_sentence:
-                    c.write("%d\t%d\t%d\t%d\n" % (next_free_id-1,
-                                                  next_free_id,
-                                                  sym, sym))
-                    next_free_id += 1
-                # Connect with final node
-                c.write("%d\t1\t%d\t%d\n" % (next_free_id-1,
-                                             utils.EOS_ID,
-                                             utils.EOS_ID))
-            c.write("1\n")
-            write_fst(c.compile(), self.file_pattern % fst_idx)
+clsmembers = inspect.getmembers(sys.modules[__name__], inspect.isclass)
+for name, _cls in clsmembers:
+    if issubclass(_cls, OutputHandler) and not _cls == OutputHandler:
+        if not hasattr(_cls, 'name'):
+            raise ValueError("All output handlers classes must have `name` attribute. Culprit: {}".format(name))
+        else:
+            OUTPUT_REGISTRY[_cls.name] = _cls
 

@@ -60,8 +60,8 @@ def get_fairseq_args(model_path, lang_pair):
 
 class FairseqPredictor(Predictor):
     """Predictor for using fairseq models."""
-
-    def __init__(self, model_path, user_dir, lang_pair, n_cpu_threads=-1):
+    name = 'fairseq'
+    def __init__(self, args):
         """Initializes a fairseq predictor.
 
         Args:
@@ -73,20 +73,20 @@ class FairseqPredictor(Predictor):
                                  use GPU.
         """
         super(FairseqPredictor, self).__init__()
-        _initialize_fairseq(user_dir)
-        self.use_cuda = torch.cuda.is_available() and n_cpu_threads < 0
+        _initialize_fairseq(args.fairseq_user_dir)
+        self.use_cuda = torch.cuda.is_available() and args.n_cpu_threads < 0
 
-        args = get_fairseq_args(model_path, lang_pair)
+        fairseq_args = get_fairseq_args(args.fairseq_path, args.fairseq_lang_pair)
 
         # Setup task, e.g., translation
-        task = tasks.setup_task(args)
+        task = tasks.setup_task(fairseq_args)
         source_dict = task.source_dictionary
         target_dict = task.target_dictionary
         self.src_vocab_size = len(source_dict) + 1
         self.trg_vocab_size = len(target_dict) + 1
         self.pad_id = target_dict.pad()
          # Load ensemble
-        self.models = self.load_models(model_path, task)
+        self.models = self.load_models(args.fairseq_path, task)
         self.model = EnsembleModel(self.models)
         self.model.eval()
 

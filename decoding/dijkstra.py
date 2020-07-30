@@ -8,6 +8,7 @@ from heapq import heappush, heappop
 
 class DijkstraDecoder(Decoder):
     
+    name = "dijkstra"
     def __init__(self, decoder_args):
         """Creates a new A* decoder instance. The following values are
         fetched from `decoder_args`:

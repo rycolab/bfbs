@@ -2,6 +2,7 @@ import numpy as np
 import scipy.optimize as opt
 import utils
 from bisect import bisect
+import logging
 
 def gumbel_max_sample(x, seed=0):
     """
@@ -56,10 +57,13 @@ def log_sample_k_dpp(log_lambdas, k, seed=0):
     J = []
     log_E = log_elem_polynomials(log_lambdas, k)
     inc_probs = inclusion_probs(log_lambdas, k, log_E)
+    a = log_lambdas[inc_probs > 0.]
+    if not a.size == 0:
+        logging.warn("Experiencing some numerical instability.")
 
     for n in range(N,0,-1):
         u = np.random.uniform()
-        thresh = log_lambdas[n-1] + log_E[k-1,n-1] - log_E[k,n]   
+        thresh = log_lambdas[n-1] + log_E[k-1,n-1] - log_E[k,n]  
         if np.log(u) < thresh:
             J.append(n-1)
             k -= 1
@@ -68,7 +72,7 @@ def log_sample_k_dpp(log_lambdas, k, seed=0):
     
     return J, log_beam_prob(log_lambdas, log_E, J), inc_probs
 
-def log_sample_poisson(log_lambdas, k, normalize=True, seed=0):
+def log_sample_poisson(log_lambdas, k=1, normalize=True, seed=0):
     np.random.seed(seed=seed)
     J = []
     
@@ -80,6 +84,7 @@ def log_sample_poisson(log_lambdas, k, normalize=True, seed=0):
         u = np.random.uniform() 
         if np.log(u) < l:
             J.append(i)
+    #print(len(J))
     return J, inc_probs
 
 def log_beam_prob(log_lambdas, log_E, beam):
@@ -88,22 +93,20 @@ def log_beam_prob(log_lambdas, log_E, beam):
     return sum([log_lambdas[i] for i in beam]) - log_E[-1,-1]
 
 def inclusion_probs(log_lambdas, k, E=None):
-
-    def d_v():
-        k, N = E.shape[0] - 1, E.shape[1] - 1
-        d_v = np.full(N, utils.NEG_INF)
-        d_E = np.full((k+1,N+1), utils.NEG_INF)
-        d_E[k, N] = 0.
-        for r in reversed(range(1,k+1)):
-            for n in reversed(range(1,N+1)):
-                d_E[r,n-1]   = utils.log_add(d_E[r,n-1], d_E[r,n])
-                d_v[n-1]     = utils.log_add(d_v[n-1], d_E[r,n] + E[r-1,n-1])
-                d_E[r-1,n-1] = utils.log_add(d_E[r-1,n-1], d_E[r,n] + log_lambdas[n-1])
-        return d_v
-
     if E is None:
         E = log_elem_polynomials(log_lambdas, k)
-    dv = d_v(log_lambdas, E)
+
+    k_, N = E.shape[0] - 1, E.shape[1] - 1
+    assert k_ == k
+    dv = np.full(N, utils.NEG_INF)
+    d_E = np.full((k+1,N+1), utils.NEG_INF)
+    d_E[k, N] = 0.
+    for r in reversed(range(1,k+1)):
+        for n in reversed(range(1,N+1)):
+            d_E[r,n-1]   = utils.log_add(d_E[r,n-1], d_E[r,n])
+            dv[n-1]     = utils.log_add(dv[n-1], d_E[r,n] + E[r-1,n-1])
+            d_E[r-1,n-1] = utils.log_add(d_E[r-1,n-1], d_E[r,n] + log_lambdas[n-1])
+
     Z = E[k, len(log_lambdas)]
     return dv + log_lambdas - Z
 
@@ -157,8 +160,9 @@ def expected_k(log_X):
 
 def get_const(log_lambdas, desired_k):
     base_inc_probs = np.log(desired_k) + log_lambdas 
+    remaining_prob = 1 - np.exp(utils.logsumexp(log_lambdas))
     c = desired_k/expected_k(base_inc_probs)
     start = c*desired_k
-    results = opt.minimize(lambda x: (desired_k - expected_k(log_lambdas + np.log(x)))**2, start)
-    return results.x
+    results = opt.minimize(lambda x: (desired_k - (expected_k(log_lambdas + x) + desired_k*remaining_prob))**2, np.log(start))
+    return np.exp(results.x[0])
 

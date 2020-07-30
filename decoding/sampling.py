@@ -2,12 +2,13 @@ import copy
 import numpy as np
 import time
 
-import utils
+import utils, sampling_utils
+from bisect import bisect
 from decoding.core import Decoder, PartialHypothesis
 
 
 class SamplingDecoder(Decoder):
-    
+    name = "sampling"
     def __init__(self, decoder_args):
         """Creates a new A* decoder instance. The following values are
         fetched from `decoder_args`:
@@ -27,19 +28,19 @@ class SamplingDecoder(Decoder):
         self.nbest = decoder_args.nbest
         assert not self.gumbel
         
-    def decode(self, src_sentence):
+    def decode(self, src_sentence, seed=0):
         self.initialize_predictor(src_sentence)
         hypos = [PartialHypothesis(copy.deepcopy(self.get_predictor_states())) for i in range(self.nbest)]
 
         t = 0
         while hypos and t < self.max_len:
             next_hypos = []
-            for seed, hypo in enumerate(hypos):
+            for sen_seed, hypo in enumerate(hypos):
                 if hypo.get_last_word() == utils.EOS_ID:
                     hypo.score = self.get_adjusted_score(hypo)
                     self.add_full_hypo(hypo.generate_full_hypothesis())
                 else:
-                    self._expand_hypo(hypo, seed=seed)
+                    self._expand_hypo(hypo, seed=seed+sen_seed)
                     next_hypos.append(hypo)
             hypos = next_hypos
             t+=1
@@ -55,8 +56,7 @@ class SamplingDecoder(Decoder):
 
         self.set_predictor_states(hypo.predictor_states)
         ids, posterior, _ = self.apply_predictor()
-        probabilites = utils.softmax(posterior)
-        ind = self._sample(probabilites, seed)
+        ind = self._sample(posterior, seed)
         next_word = ids[ind]
 
         hypo.predictor_states = self.get_predictor_states()
@@ -65,9 +65,41 @@ class SamplingDecoder(Decoder):
         hypo.trgt_sentence += [next_word]
         self.consume(next_word)
 
+    def _sample(self, posterior, seed):
+        return sampling_utils.log_multinomial_sample(posterior, seed=seed)
+
+
+class NucleusSamplingDecoder(SamplingDecoder):
+    name = "nucleus_sampling"
+    def __init__(self, decoder_args):
+        """Creates a new A* decoder instance. The following values are
+        fetched from `decoder_args`:
+        
+            nbest (int): If this is set to a positive value, we do not
+                         stop decoding at the first complete path, but
+                         continue search until we collected this many
+                         complete hypothesis. With an admissible
+                         heuristic, this will yield an exact n-best
+                         list.
+        
+        Args:
+            decoder_args (object): Decoder configuration passed through
+                                   from the configuration API.
+        """
+        super(NucleusSamplingDecoder, self).__init__(decoder_args)
+        self.nucleus_threshold = decoder_args.nucleus_threshold
 
     def _sample(self, posterior, seed):
-        np.random.seed(seed=seed)
-        choices = range(len(posterior)) 
-        return np.random.choice(choices, p=posterior)
+        self._truncate_log_dist(posterior, np.log(self.nucleus_threshold))
+        return sampling_utils.log_multinomial_sample(posterior, seed=seed)
+
+    @staticmethod
+    def _truncate_log_dist(dist, threshold):
+        """in-place method to truncate distribution to core elements 
+        in `threshold` bound"""
+        sorted_inds = np.argsort(-dist)
+        sorted_dist = dist[sorted_inds]
+        c = np.logaddexp.accumulate(sorted_dist) 
+        last = bisect(c, threshold)
+        dist[sorted_inds[last+1:]] = utils.NEG_INF
     

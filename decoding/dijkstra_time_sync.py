@@ -10,6 +10,7 @@ from decoding.core import Decoder, PartialHypothesis
 
 class DijkstraTSDecoder(Decoder):
     
+    name = "dijkstra_ts"
     def __init__(self, decoder_args):
         """Creates a new A* decoder instance. The following values are
         fetched from `decoder_args`:

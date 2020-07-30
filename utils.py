@@ -152,6 +152,15 @@ def argmax(arr):
     else:
         return np.argmax(arr)
 
+def flattened(X):
+    """flattens list of lists"""
+    return [y for x in X for y in x]
+
+def as_ndarray(X, pad=-1, min_length=0):
+    """turns list of lists into ndarray"""
+    longest = max(len(max(X, key=len)), min_length)
+    return np.array([i + [pad]*(longest-len(i)) for i in X])
+
 def logmexp(x):
     return np.log1p(-np.exp(x))
 
@@ -391,6 +400,23 @@ def distinct_ngrams(hypos, n):
 def ngram_diversity(hypos):
     ds = [distinct_ngrams(hypos, i) for i in range(1,5)]
     return sum(ds)/4
+
+def hamming_distance(hypo, other_hypos, pad=-1):
+    if isinstance(other_hypos, np.ndarray):
+        if len(hypo) != other_hypos.shape[1]:
+            hypo = np.array(hypo + [pad]*(other_hypos.shape[1] - len(hypo)))
+        return (hypo != other_hypos).sum()
+
+    elif isinstance(other_hypos, list):
+        distance = 0
+        for h in other_hypos:
+            smaller, larger = min(len(h), len(hypo)), max(len(h), len(hypo))
+            distance += larger - smaller + sum([a != b for a,b 
+                in zip(h[:smaller], hypo[:smaller])])
+        return distance
+
+    else:
+        logging.warn("No implementation for type: "+ str(type(other_hypos)))
 
 
 MESSAGE_TYPE_DEFAULT = 1

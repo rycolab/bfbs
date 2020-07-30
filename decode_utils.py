@@ -34,32 +34,9 @@ import uuid
 import ui
 import io_utils
 import utils
-from decoding.astar import AstarDecoder
-from decoding.beam import BeamDecoder
-from decoding.core import Hypothesis
-from decoding.dijkstra import DijkstraDecoder
-from decoding.dijkstra_time_sync import DijkstraTSDecoder
-from decoding.reference import ReferenceDecoder
-from decoding.sampling import SamplingDecoder
-from decoding.swor import BasicSworDecoder, \
-                            MemEfficientSworDecoder, \
-                            SworDecoder, \
-                            CPSworDecoder, \
-                            PSworDecoder
-from decoding.dfs import DFSDecoder, \
-                                   SimpleDFSDecoder, \
-                                   SimpleLengthDFSDecoder
-from decoding.greedy import GreedyDecoder
-from output import TextOutputHandler, \
-                             NBestOutputHandler, \
-                             NBestSeparateOutputHandler, \
-                             NgramOutputHandler, \
-                             TimeCSVOutputHandler, \
-                             FSTOutputHandler, \
-                             StandardFSTOutputHandler, \
-                             ScoreOutputHandler
-
-from predictors.pytorch_fairseq import FairseqPredictor
+import decoding
+import output
+import predictors
 
 
 args = None
@@ -107,7 +84,6 @@ def base_init(new_args):
         sys.exit()
 
 
-
 def add_predictor(decoder):
     """Adds all enabled predictors to the ``decoder``. This function 
     makes heavy use of the global ``args`` which contains the
@@ -130,19 +106,14 @@ def add_predictor(decoder):
 
     pred = preds[0]
     try:
-        if pred == "fairseq":
-            p = FairseqPredictor(args.fairseq_path,
-                                 args.fairseq_user_dir,
-                                 args.fairseq_lang_pair,
-                                 args.n_cpu_threads)
-        
-        decoder.add_predictor(pred, p)
+        predictor = predictors.PREDICTOR_REGISTRY[pred](args)
+        decoder.add_predictor(pred, predictor)
         logging.info("Initialized predictor {}".format(
                          pred))
     except IOError as e:
         logging.fatal("One of the files required for setting up the "
                       "predictors could not be read: %s" % e)
-        decoder.remove_predictors()
+        decoder.remove_predictor()
     except AttributeError as e:
         logging.fatal("Invalid argument for one of the predictors: %s."
                        "Stack trace: %s" % (e, traceback.format_exc()))
@@ -152,13 +123,13 @@ def add_predictor(decoder):
                       "that your PYTHONPATH and LD_LIBRARY_PATH contains all "
                       "paths required for the predictors. Stack trace: %s" % 
                       (e, traceback.format_exc()))
-        decoder.remove_predictors()
+        decoder.remove_predictor()
     except ValueError as e:
         logging.fatal("A number format error occurred while configuring the "
                       "predictors: %s. Please double-check all integer- or "
                       "float-valued parameters such as --predictor_weights and"
                       " try again. Stack trace: %s" % (e, traceback.format_exc()))
-        decoder.remove_predictors()
+        decoder.remove_predictor()
     except Exception as e:
         logging.fatal("An unexpected %s has occurred while setting up the pre"
                       "dictors: %s Stack trace: %s" % (sys.exc_info()[0],
@@ -178,48 +149,16 @@ def create_decoder():
         Decoder. Instance of the search strategy
     """
     # Create decoder instance and add predictors
-    decoder = None
+    
     try:
-        if args.decoder == "greedy":
-            decoder = GreedyDecoder(args)
-        elif args.decoder == "beam":
-            decoder = BeamDecoder(args)
-        elif args.decoder == "dfs":
-            decoder = DFSDecoder(args)
-        elif args.decoder == "simpledfs":
-            decoder = SimpleDFSDecoder(args)
-        elif args.decoder == "simplelendfs":
-            decoder = SimpleLengthDFSDecoder(args)
-        elif args.decoder == "astar":
-            decoder = AstarDecoder(args)
-        elif args.decoder == "dijkstra":
-            decoder = DijkstraDecoder(args)
-        elif args.decoder == "dijkstra_ts":
-            decoder = DijkstraTSDecoder(args)
-        elif args.decoder == "reference":
-            decoder = ReferenceDecoder(args)
-        elif args.decoder == "sampling":
-            decoder = SamplingDecoder(args)
-        elif args.decoder == "basic_swor":
-            decoder = BasicSworDecoder(args)
-        elif args.decoder == "mem_swor":
-            decoder = MemEfficientSworDecoder(args)
-        elif args.decoder == "alt_swor":
-            decoder = SworDecoder(args)
-        elif args.decoder == "cp_swor":
-            decoder = CPSworDecoder(args)
-        elif args.decoder == "p_swor":
-            decoder = PSworDecoder(args)
-        else:
-            logging.fatal("Decoder %s not available. Please double-check the "
-                          "--decoder parameter." % args.decoder)
+        decoder = decoding.DECODER_REGISTRY[args.decoder](args)
     except Exception as e:
         logging.fatal("An %s has occurred while initializing the decoder: %s"
                       " Stack trace: %s" % (sys.exc_info()[0],
                                             e,
                                             traceback.format_exc()))
-    if decoder is None:
         sys.exit("Could not initialize decoder.")
+
     add_predictor(decoder)
     return decoder
 
@@ -239,27 +178,10 @@ def create_output_handlers():
         return []
     outputs = []
     for name in utils.split_comma(args.outputs):
-        if '%s' in args.output_path:
-            path = args.output_path % name
-        else:
-            path = args.output_path
-        if name == "text":
-            outputs.append(TextOutputHandler(path))
-        elif name == "nbest_sep":
-            outputs.append(NBestSeparateOutputHandler(path, args.nbest))
-        elif name == "nbest":
-            outputs.append(NBestOutputHandler(path, 
-                                              utils.split_comma(args.predictors)))
-        elif name == "ngram":
-            outputs.append(NgramOutputHandler(path,
-                                              args.min_ngram_order,
-                                              args.max_ngram_order))
-        elif name == "timecsv":
-            outputs.append(TimeCSVOutputHandler(path, 
-                                                utils.split_comma(args.predictors)))
-        elif name == "score":
-            outputs.append(ScoreOutputHandler(path))
-        else:
+        path = args.output_path % name if '%s' in args.output_path else args.output_path
+        try:
+            outputs.append(output.OUTPUT_REGISTRY[name](path, args))
+        except KeyError:
             logging.fatal("Output format %s not available. Please double-check"
                           " the --outputs parameter." % name)
     return outputs
@@ -324,15 +246,16 @@ def get_sentence_indices(range_param, src_sentences):
 def _get_text_output_handler(output_handlers):
     """Returns the text output handler if in output_handlers, or None."""
     for output_handler in output_handlers:
-        if isinstance(output_handler, TextOutputHandler)\
-                or isinstance(output_handler, NBestSeparateOutputHandler):
+
+        if isinstance(output_handler, output.TextOutputHandler)\
+                or isinstance(output_handler, output.NBestSeparateOutputHandler):
             return output_handler
     return None
 
 def _get_score_output_handler(output_handlers):
     """Returns the text output handler if in output_handlers, or None."""
     for output_handler in output_handlers:
-        if isinstance(output_handler, ScoreOutputHandler):
+        if isinstance(output_handler, output.ScoreOutputHandler):
             return output_handler
     return None
 
@@ -362,7 +285,7 @@ def _postprocess_complete_hypos(hypos):
 
 
 def _generate_dummy_hypo():
-    return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
+    return decoding.core.Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
 
 def do_decode(decoder, 
@@ -436,9 +359,6 @@ def do_decode(decoder,
                                             decoder.apply_predictor_count,
                                             time.time() - start_hypo_time,
                                             utils.perplexity(logged_hypo.score_breakdown)))
-
-            # print([l.total_score for l in hypos])
-            # print([sum(l.score_breakdown) for l in hypos])
 
             if score_output_handler:
                 try:

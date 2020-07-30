@@ -34,7 +34,7 @@ class DFSDecoder(Decoder):
     this DFS implementation has no cycle detection, i.e. if the search
     space has cycles this decoder may run into an infinite loop.
     """
-    
+    name = 'dfs'
     def __init__(self, decoder_args):
         """Creates new DFS decoder instance. The following values are
         fetched from `decoder_args`:
@@ -146,7 +146,7 @@ class SimpleDFSDecoder(Decoder):
     SimpleDFS does not support max_expansions or max_len_factor.
     early_stopping cannot be disabled.
     """
-    
+    name = "simple_dfs"
     def __init__(self, decoder_args):
         """Creates new SimpleDFS decoder instance. 
 
@@ -240,7 +240,7 @@ class SimpleLengthDFSDecoder(Decoder):
     SimpleDFS does not support max_expansions or max_len_factor.
     early_stopping cannot be disabled.
     """
-    
+    name = "simple_length_dfs"
     def __init__(self, decoder_args):
         """Creates new SimpleDFS decoder instance. 
 

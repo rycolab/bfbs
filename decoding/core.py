@@ -84,12 +84,18 @@ class PartialHypothesis(object):
         self.score_breakdown = []
         self.word_to_consume = None
 
+    def __repr__(self):
+        """Returns a string representation of this hypothesis."""
+        return "%s (%f)" % (' '.join(str(w) for w in self.trgt_sentence),
+                            self.score)
+    def __len__(self):
+        return len(self.trgt_sentence)
 
     def __lt__(self, other):
         return self.score < other.score
 
-    def __len__(self):
-        return len(self.trgt_sentence)
+    def __add__(self, other):
+        return self.trgt_sentence + other
     
     def get_last_word(self):
         """Get the last word in the translation prefix. """
@@ -257,6 +263,7 @@ class Decoder(Observable):
         self.current_sen_id = -1
         self.apply_predictor_count = 0
         self.temperature = decoder_args.temperature
+        self.add_incomplete = decoder_args.add_incomplete
          # score function will be monotonic without modifications to scoring function;
          # currently, modified objectives are not implemented in this library. Can
          # bring them back if wanted
@@ -412,7 +419,7 @@ class Decoder(Observable):
         return gumbel_full_posterior
 
     
-    def _expand_hypo(self, hypo, limit=0):
+    def _expand_hypo(self, hypo, limit=0, return_dist=False):
         """Get the best beam size expansions of ``hypo``.
         
         Args:
@@ -436,16 +443,18 @@ class Decoder(Observable):
                         base_score=original_posterior[idx] + hypo.base_score if self.gumbel else hypo.base_score,
                         breakdown=original_posterior[idx] if self.gumbel else posterior[idx]
                         ) for idx, trgt_word in enumerate(ids)]
+        if return_dist:
+            return new_hypos, posterior
         return new_hypos
 
 
     def get_pos_score(self, hypo, val, max_=None):
         """Combines hypo score with future cost estimates.""" 
-        return  hypo.score + val
+        return hypo.score + val
 
     def get_adjusted_score(self, hypo):
         """Combines hypo score with penalties/rewards.""" 
-        current_score =  hypo.score
+        current_score = hypo.score
         if self.gumbel:
             return current_score
 
@@ -532,7 +541,7 @@ class Decoder(Observable):
         self.full_hypos.append(hypo)
         self.notify_observers(hypo, message_type = MESSAGE_TYPE_FULL_HYPO)
     
-    def get_full_hypos_sorted(self):
+    def get_full_hypos_sorted(self, additional_hypos=None):
         """Returns ``full_hypos`` sorted by the total score. Can be 
         used by implementing subclasses as return value of
         ``decode``
@@ -540,6 +549,26 @@ class Decoder(Observable):
         Returns:
             list. ``full_hypos`` sorted by ``total_score``.
         """
+
+        if additional_hypos is not None:
+            incompletes = []
+            for hypo in additional_hypos:
+                if hypo.get_last_word() == utils.EOS_ID:
+                    hypo.score = self.get_adjusted_score(hypo)
+                    self.add_full_hypo(hypo.generate_full_hypothesis()) 
+                else: 
+                    incompletes.append(hypo)
+
+            if not self.full_hypos:
+                logging.warn("No complete hypotheses found")
+
+            if len(self.full_hypos) < self.nbest and self.add_incomplete:
+                logging.warn("Adding incomplete hypotheses as candidates")
+                incompletes.sort(key=lambda hypo: hypo.score, reverse=True)
+                for hypo in incompletes[:self.nbest - len(self.full_hypos)]:
+                    hypo.score = self.get_adjusted_score(hypo)
+                    self.add_full_hypo(hypo.generate_full_hypothesis()) 
+
         return sorted(self.full_hypos,
                       key=lambda hypo: hypo.total_score,
                       reverse=True)

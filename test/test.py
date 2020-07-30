@@ -37,30 +37,7 @@ import collections
 
 import utils
 import sampling_utils
-from decoding.astar import AstarDecoder
-from decoding.beam import BeamDecoder
-from decoding.core import Hypothesis
-from decoding.dijkstra import DijkstraDecoder
-from decoding.dijkstra_time_sync import DijkstraTSDecoder
-from decoding.reference import ReferenceDecoder
-from decoding.sampling import SamplingDecoder
-from decoding.dfs import DFSDecoder, \
-                                   SimpleDFSDecoder, \
-                                   SimpleLengthDFSDecoder
-from decoding.greedy import GreedyDecoder
-from decoding.swor import BasicSworDecoder, \
-                            MemEfficientSworDecoder, \
-                            SworDecoder, \
-                            CPSworDecoder, \
-                            PSworDecoder
-from output import TextOutputHandler, \
-                             NBestOutputHandler, \
-                             NBestSeparateOutputHandler, \
-                             NgramOutputHandler, \
-                             TimeCSVOutputHandler, \
-                             FSTOutputHandler, \
-                             StandardFSTOutputHandler, \
-                             ScoreOutputHandler
+import decoding
 
 from test.dummy_predictor import DummyPredictor
 from ui import get_args
@@ -124,7 +101,7 @@ def add_predictor(decoder):
 
 def create_decoder():
     """Creates the ``Decoder`` instance. This specifies the search 
-    strategy used to traverse the space spanned by the predictor. This
+    strategy used to traverse the space spanned by the predictors. This
     method relies on the global ``args`` variable.
     
     TODO: Refactor to avoid long argument lists
@@ -132,55 +109,23 @@ def create_decoder():
     Returns:
         Decoder. Instance of the search strategy
     """
-    # Create decoder instance and add predictor
-    decoder = None
+    # Create decoder instance and add predictors
+    
     try:
-        if args.decoder == "greedy":
-            decoder = GreedyDecoder(args)
-        elif args.decoder == "beam":
-            decoder = BeamDecoder(args)
-        elif args.decoder == "dfs":
-            decoder = DFSDecoder(args)
-        elif args.decoder == "simpledfs":
-            decoder = SimpleDFSDecoder(args)
-        elif args.decoder == "simplelendfs":
-            decoder = SimpleLengthDFSDecoder(args)
-        elif args.decoder == "astar":
-            decoder = AstarDecoder(args)
-        elif args.decoder == "dijkstra":
-            decoder = DijkstraDecoder(args)
-        elif args.decoder == "dijkstra_ts":
-            decoder = DijkstraTSDecoder(args)
-        elif args.decoder == "reference":
-            decoder = ReferenceDecoder(args)
-        elif args.decoder == "sampling":
-            decoder = SamplingDecoder(args)
-        elif args.decoder == "basic_swor":
-            decoder = BasicSworDecoder(args)
-        elif args.decoder == "mem_swor":
-            decoder = MemEfficientSworDecoder(args)
-        elif args.decoder == "alt_swor":
-            decoder = SworDecoder(args)
-        elif args.decoder == "cp_swor":
-            decoder = CPSworDecoder(args)
-        elif args.decoder == "p_swor":
-            decoder = PSworDecoder(args)
-        else:
-            logging.fatal("Decoder %s not available. Please double-check the "
-                          "--decoder parameter." % args.decoder)
+        decoder = decoding.DECODER_REGISTRY[args.decoder](args)
     except Exception as e:
         logging.fatal("An %s has occurred while initializing the decoder: %s"
                       " Stack trace: %s" % (sys.exc_info()[0],
                                             e,
                                             traceback.format_exc()))
-    if decoder is None:
         sys.exit("Could not initialize decoder.")
+        
     add_predictor(decoder)
     return decoder
 
 
 def _generate_dummy_hypo():
-    return Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
+    return decoding.core.Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
 def randomString(stringLength=5):
     letters = string.ascii_lowercase
@@ -300,6 +245,21 @@ def test_sampling():
         brute_partition = partition_brute(lambdas,k)
         assert_equal(brute_partition, elem_polynomial_partition, 'standard elementary polynomial')
         assert_equal(np.log(brute_partition), log_elem_polynomial_partition, 'log elementary polynomial')
+
+    for i in range(1):
+        N = np.random.randint(2,20)
+        k = np.random.randint(1,N)
+        lambdas = np.random.uniform(size=N)
+        log_lambdas = np.log(lambdas)
+        a = [0]*N
+        iters = 100000
+        for i in range(iters):
+            inds, _, inc_probs = sampling_utils.log_sample_k_dpp(log_lambdas, k, seed=i)
+            for j in inds:
+                a[j] += 1
+        x = [i/iters for i in a]
+        y = np.exp([min(0., l) for l in inc_probs])
+        assert sum(abs(x-y))/len(x) < 0.01
 
 
 args = get_args()
