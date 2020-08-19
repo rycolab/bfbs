@@ -1,6 +1,7 @@
 import copy
 import logging
 import utils
+
 from datastructures.min_max_queue import MinMaxHeap
 from decoding.core import Decoder, PartialHypothesis
 from heapq import heappush, heappop
@@ -10,21 +11,6 @@ class DijkstraDecoder(Decoder):
     
     name = "dijkstra"
     def __init__(self, decoder_args):
-        """Creates a new A* decoder instance. The following values are
-        fetched from `decoder_args`:
-        
-            beam (int): Maximum number of active hypotheses.
-            nbest (int): If this is set to a positive value, we do not
-                         stop decoding at the first complete path, but
-                         continue search until we collected this many
-                         complete hypothesis. With an admissible
-                         heuristic, this will yield an exact n-best
-                         list.
-        
-        Args:
-            decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
-        """
         super(DijkstraDecoder, self).__init__(decoder_args)
         self.nbest = max(1, decoder_args.nbest)
         self.use_lower_bound = not self.gumbel

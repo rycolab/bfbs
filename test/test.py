@@ -1,35 +1,9 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This module is the bridge between the command line configuration of
-the decode.py script and the SGNMT software architecture consisting of
-decoders, predictor, and output handlers. A common use case is to call
-`create_decoder()` first, which reads the SGNMT configuration and loads
-the right predictor and decoding strategy with the right arguments.
-The actual decoding is implemented in `do_decode()`. See `decode.py`
-to learn how to use this module.
-"""
-
 import logging
 import codecs
 import sys
 import time
 import traceback
 import os
-import uuid
 import numpy as np
 import random
 import string
@@ -44,20 +18,9 @@ from ui import get_args
 
 random.seed(0)
 args = None
-"""This variable is set to the global configuration when 
-base_init().
-"""
+
 
 def base_init(new_args):
-    """This function should be called before accessing any other
-    function in this module. It initializes the `args` variable on 
-    which all the create_* factory functions rely on as configuration
-    object, and it sets up global function pointers and variables for
-    basic things like the indexing scheme, logging verbosity, etc.
-
-    Args:
-        new_args: Configuration object from the argument parser.
-    """
     global args
     args = new_args
     # UTF-8 support
@@ -65,7 +28,7 @@ def base_init(new_args):
         sys.stderr = codecs.getwriter('UTF-8')(sys.stderr)
         sys.stdout = codecs.getwriter('UTF-8')(sys.stdout)
         sys.stdin = codecs.getreader('UTF-8')(sys.stdin)
-        logging.warn("SGNMT is tested with Python 3, but you are using "
+        logging.warn("Library is tested with Python 3, but you are using "
                      "Python 2. Expect the unexpected or switch to >3.5.")
     # Set up logger
     logger = logging.getLogger(__name__)
@@ -83,33 +46,11 @@ def base_init(new_args):
     utils.switch_to_fairseq_indexing()
 
 def add_predictor(decoder):
-    """Adds all enabled predictor to the ``decoder``. This function 
-    makes heavy use of the global ``args`` which contains the
-    SGNMT configuration. Particularly, it reads out ``args.predictor``
-    and adds appropriate instances to ``decoder``.
-    TODO: Refactor this method as it is waaaay tooooo looong
     
-    Args:
-        decoder (Decoder):  Decoding strategy, see ``create_decoder()``.
-            This method will add predictor to this instance with
-            ``add_predictor()``
-    """
-    
-    pred_weight = 1.0
     p = DummyPredictor(vocab_size=20)
     decoder.add_predictor("dummy", p)
 
 def create_decoder():
-    """Creates the ``Decoder`` instance. This specifies the search 
-    strategy used to traverse the space spanned by the predictors. This
-    method relies on the global ``args`` variable.
-    
-    TODO: Refactor to avoid long argument lists
-    
-    Returns:
-        Decoder. Instance of the search strategy
-    """
-    # Create decoder instance and add predictors
     
     try:
         decoder = decoding.DECODER_REGISTRY[args.decoder](args)
@@ -127,37 +68,22 @@ def create_decoder():
 def _generate_dummy_hypo():
     return decoding.core.Hypothesis([utils.UNK_ID], 0.0, [0.0]) 
 
+def create_src_sentences(num_sentences=10, str_length=5):
+    return [randomString(str_length) for i in range(num_sentences)]
+
 def randomString(stringLength=5):
     letters = string.ascii_lowercase
     return [random.choice(letters) for i in range(stringLength)]
 
 def do_decode(decoder, 
-              output_handlers, 
               src_sentences,
               trgt_sentences=None,
-              test_str_length=5,
               num_log=1):
-    """This method contains the main decoding loop. It iterates through
-    ``src_sentences`` and applies ``decoder.decode()`` to each of them.
-    At the end, it calls the output handlers to create output files.
-    
-    Args:
-        decoder (Decoder):  Current decoder instance
-        output_handlers (list):  List of output handlers, see
-                                 ``create_output_handlers()``
-        src_sentences (list):  A list of strings. The strings are the
-                               source sentences with word indices to 
-                               translate (e.g. '1 123 432 2')
-    """
-    if not decoder.has_predictor():
-        logging.fatal("Terminated due to an error in the "
-                      "predictor configuration.")
-        return
+
     all_hypos = []
     
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
-    src_sentences = [randomString(test_str_length) for i in range(10)]
     for sen_idx, src in enumerate(src_sentences):
         decoder.set_current_sen_id(sen_idx)
         logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, ''.join(src)))
@@ -188,24 +114,27 @@ def do_decode(decoder,
                                         decoder.apply_predictor_count,
                                         time.time() - start_hypo_time,
                                         utils.perplexity(logged_hypo.score_breakdown)))
-    return src_sentences, all_hypos
+    return all_hypos
 
 
-def do_decode_swor(decoder, 
-              output_handlers, 
+def compare_decoders(decoder1, 
+              decoder2,
               src_sentences,
-              trgt_sentences=None,
+              early_stopping=False,
               num_log=1):
     
-    src_sentences, all_hypos = do_decode(decoder, output_handlers, src_sentences, trgt_sentences, num_log=num_log)
-    all_trgt_sens = [[tuple(h.trgt_sentence) for h in hypos] for hypos in all_hypos]
-    for s, hypos in zip(src_sentences, all_trgt_sens):
-        if len(hypos) != len(set(hypos)):
-            logging.error("Not unique set for sentence %s; found %d duplicates." % (str(s), len(hypos) - len(set(hypos))))
-    for hypos in all_hypos:
-        for h in hypos:
-            if h.total_score > sum(h.score_breakdown) and not decoder.gumbel:
-                logging.error("Computation error. Adjusted score greater than original score for sentence %s" % str(s))
+    all_hypos1 = do_decode(decoder1, src_sentences, num_log=num_log)
+    print("-------------------")
+    all_hypos2 = do_decode(decoder2, src_sentences, num_log=num_log)
+
+    for sentences1, sentences2 in zip(all_hypos1, all_hypos2):
+        if early_stopping:
+            assert max(sentences1).total_score == max(sentences2).total_score
+        else:
+            for sen1, sen2 in zip(sorted(sentences1), sorted(sentences2)):
+                assert sen1.total_score == sen2.total_score
+
+    logging.info("Sets returned are equal!")
 
 def test_utils():
     from arsenal.maths import assert_equal
@@ -223,7 +152,6 @@ def test_utils():
         assert_equal(want, utils.log_add(np.log(a), np.log(b)), 'log add timv')
         assert_equal(want, utils.log_add_old(np.log(a), np.log(b)), 'log add clara')
 
-    
 
 def test_sampling():
     from arsenal.maths import assert_equal
@@ -271,11 +199,20 @@ if not args.decoder:
     exit(0)
 
 decoder = create_decoder()
-if 'swor' in args.decoder or args.gumbel:
-    do_decode_swor(decoder, [], False, num_log=args.num_log)
+try: 
+    num_sentences = int(args.range)
+except:
+    num_sentences = 10
+    logging.warn("Range argument not valid; defaulting to 10 examples")
+
+src_sentences = create_src_sentences(num_sentences, str_length=5)
+if args.beam <= 0:
+    logging.warn("Using beam size <= 0. Decoding may not terminate")
+if args.decoder == "dijkstra_ts":
+    args.decoder = "beam"
+    decoder2 = create_decoder()
+    compare_decoders(decoder, decoder2, src_sentences, args.early_stopping, num_log=args.num_log)
 else:
-    if args.beam <= 0:
-        logging.warn("Using beam size <= 0. Decoding may not terminate")
-    do_decode(decoder, [], False, num_log=args.num_log)
+    do_decode(decoder, src_sentences, num_log=args.num_log)
 
 

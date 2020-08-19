@@ -1,26 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This is the interface to the fairseq library.
-
-https://github.com/pytorch/fairseq
-
-The fairseq predictor can read any model trained with fairseq.
-"""
-
 import logging
 import os
 
@@ -35,10 +12,8 @@ import numpy as np
 import copy
 
 
-
 FAIRSEQ_INITIALIZED = False
 """Set to true by _initialize_fairseq() after first constructor call."""
-
 
 def _initialize_fairseq(user_dir):
     global FAIRSEQ_INITIALIZED
@@ -62,16 +37,6 @@ class FairseqPredictor(Predictor):
     """Predictor for using fairseq models."""
     name = 'fairseq'
     def __init__(self, args):
-        """Initializes a fairseq predictor.
-
-        Args:
-            model_path (string): Path to the fairseq model (*.pt). Like
-                                 --path in fairseq-interactive.
-            lang_pair (string): Language pair string (e.g. 'en-fr').
-            user_dir (string): Path to fairseq user directory.
-            n_cpu_threads (int): Number of CPU threads. If negative,
-                                 use GPU.
-        """
         super(FairseqPredictor, self).__init__()
         _initialize_fairseq(args.fairseq_user_dir)
         self.use_cuda = torch.cuda.is_available() and args.n_cpu_threads < 0

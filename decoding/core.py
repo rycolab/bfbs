@@ -1,37 +1,13 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Contains all the basic interfaces and abstract classes for decoders.
-The ``Decoder`` class provides common functionality for all decoders.
-The ``Hypothesis`` class represents complete hypotheses, which are 
-returned by decoders. ``PartialHypothesis`` is a helper class which can
-be used by predictors to represent translation prefixes.
-"""
-
 from abc import abstractmethod
 import copy
 import math
-
 import utils
-from utils import Observable, Observer, MESSAGE_TYPE_DEFAULT, \
+import logging
+
+from utils import Observable, Observer, \
     MESSAGE_TYPE_POSTERIOR, MESSAGE_TYPE_FULL_HYPO, NEG_INF, EPS_P
 import numpy as np
-from operator import mul
-import logging
-from functools import reduce
+
 
 
 class Hypothesis:
@@ -41,16 +17,6 @@ class Hypothesis:
     """
     
     def __init__(self, trgt_sentence, total_score, score_breakdown = [], base_score=0.):
-        """Creates a new full hypothesis.
-        
-        Args:
-            trgt_sentence (list): List of target word ids without <S> 
-                                  or </S> which make up the target 
-                                  sentence
-            total_score (float): combined total score of this hypo
-            score_breakdown (list): Predictor score breakdown for each
-                                    target token in ``trgt_sentence``
-        """
         self.trgt_sentence = trgt_sentence
         self.total_score = total_score
         self.score_breakdown = score_breakdown
@@ -67,17 +33,10 @@ class Hypothesis:
         return self.total_score < other.total_score
     
 
-
 class PartialHypothesis(object):
     """Represents a partial hypothesis in various decoders. """
     
     def __init__(self, initial_states = None):
-        """Creates a new partial hypothesis with zero score and empty
-        translation prefix.
-        
-        Args:
-            initial_states: Initial predictor states
-        """
         self.predictor_states = initial_states
         self.trgt_sentence = []
         self.score, self.base_score = 0.0, 0.0
@@ -111,17 +70,6 @@ class PartialHypothesis(object):
         return Hypothesis(self.trgt_sentence, self.score, self.score_breakdown, self.base_score)
     
     def _new_partial_hypo(self, states, word, score, base_score=None, breakdown=None):
-        """Create a new partial hypothesis, setting its state, score
-        translation prefix and score breakdown.
-        Args:
-            states (object): Predictor states for new hypo. May be state 
-                             after consuming word or current state, depending
-                             whether full or cheap expansion is used
-            word (int): New word to add to prefix
-            score (float): Word log probability to be added to score
-            score_breakdown (list): Predictor score breakdown for
-                                    the new word
-        """
         new_hypo = PartialHypothesis(states)
         new_hypo.score = score 
         new_hypo.base_score = base_score 
@@ -132,19 +80,6 @@ class PartialHypothesis(object):
         return new_hypo
 
     def expand(self, word, new_states, score, score_breakdown):
-        """Creates a new partial hypothesis adding a new word to the
-        translation prefix with given probability and updates the
-        stored predictor states.
-        
-        Args:
-            word (int): New word to add to the translation prefix
-            new_states (object): Predictor states after consuming
-                                 ``word``
-            score (float): Word log probability which is to be added
-                           to the total hypothesis score
-            score_breakdown (list): Predictor score breakdown for
-                                    the new word
-        """
         return self._new_partial_hypo(new_states, word, score, score_breakdown)
     
     def cheap_expand(self, word, score, base_score=None, breakdown=None):
@@ -157,12 +92,6 @@ class PartialHypothesis(object):
         as we do not consume words which are then discarded anyway by
         the search procedure.
         
-        Args:
-            word (int): New word to add to the translation prefix
-            score (float): Word log probability which is to be added
-                           to the total hypothesis score
-            score_breakdown (list): Predictor score breakdown for
-                                    the new word
         """
         hypo = self._new_partial_hypo(self.predictor_states,
                                      int(word), score,
@@ -172,69 +101,6 @@ class PartialHypothesis(object):
         return hypo
 
 
-class Heuristic(Observer):
-    """A ``Heuristic`` instance can be used to estimate the future 
-    costs for a given word in a given state. See the ``heuristics``
-    module for implementations."""
-    
-    def __init__(self):
-        """Creates a heuristic without predictors. """
-        super(Heuristic, self).__init__()
-        self.predictors = []
-
-    def set_predictors(self, predictors):
-        """Set the predictors used by this heuristic. 
-        
-        Args:
-            predictors (list):  Predictors and their weights to be
-                                used with this heuristic. Should be in
-                                the same form as ``Decoder.predictors``,
-                                i.e. a list of (predictor, weight)
-                                tuples
-        """
-        self.predictors = predictors
-    
-    def initialize(self, src_sentence):
-        """Initialize the heuristic with the given source sentence.
-        This is not passed through to the heuristic predictors
-        automatically but handles initialization outside the
-        predictors.
-        
-        Args:
-            src_sentence (list): List of source word ids without <S> or
-                                 </S> which make up the source sentence
-        """
-        pass
-
-    @abstractmethod
-    def estimate_future_cost(self, hypo):
-        """Estimate the future cost (i.e. negative score) given the 
-        states of the predictors set by ``set_predictors`` for a
-        partial hypothesis ``hypo``. Note that this function is not 
-        supposed to change predictor states. If (e.g. for the greedy 
-        heuristic) this is not possible, the predictor states must be
-        changed back after execution by the implementing method.
-        
-        Args:
-            hypo (PartialHypo): Hypothesis for which to estimate the
-                                future cost
-        
-        Returns:
-            float. The future cost estimate for this heuristic
-        """
-        raise NotImplementedError
-    
-    def notify(self, message, message_type = MESSAGE_TYPE_DEFAULT):
-        """This is the notification method from the ``Observer``
-        super class. We implement it with an empty method here, but
-        implementing sub classes can override this method to get
-        notifications from the decoder instance about generated
-        posterior distributions.
-        
-        Args:
-            message (object): The posterior sent by the decoder
-        """
-        pass
     
 class Decoder(Observable):    
     """A ``Decoder`` instance represents a particular search strategy
@@ -243,18 +109,15 @@ class Decoder(Observable):
     maintained by the ``Decoder`` instance.
     
     Decoders are observable. They fire notifications after 
-    apply_predictors has been called. All heuristics
-    are observing the decoder by default.
+    apply_predictors has been called. 
     """
     
     def __init__(self, decoder_args):
-        """Initializes the decoder instance with no predictors or 
-        heuristics.
+        """Initializes the decoder instance with no predictors.
         """
         super(Decoder, self).__init__()
         self.max_len_factor = decoder_args.max_len_factor
         self.predictor = None # Tuples (predictor, weight)
-        self.heuristics = []
         self.predictor_names = []
         self.gumbel = decoder_args.gumbel
         self.allow_unk_in_output = decoder_args.allow_unk_in_output
@@ -264,10 +127,14 @@ class Decoder(Observable):
         self.apply_predictor_count = 0
         self.temperature = decoder_args.temperature
         self.add_incomplete = decoder_args.add_incomplete
-         # score function will be monotonic without modifications to scoring function;
-         # currently, modified objectives are not implemented in this library. Can
-         # bring them back if wanted
-        self.not_monotonic = False
+        self.reward_coef = decoder_args.reward_coefficient
+        self.reward_type = decoder_args.reward_type
+        self.bounded_reward_coef = decoder_args.bounded_reward_factor
+        self.length_norm = decoder_args.length_normalization
+        self.heuristic_search = decoder_args.heuristic_search
+         # score function will be monotonic without modifications to scoring function
+        self.not_monotonic = self.reward_type and not self.heuristic_search
+
 
     def add_predictor(self, name, predictor):
         """Adds a predictor to the decoder. This means that this 
@@ -284,52 +151,6 @@ class Decoder(Observable):
     def remove_predictor(self):
         """Removes all predictors of this decoder. """
         self.predictor = None
-
-    def set_heuristic_predictors(self, heuristic_predictors):
-        """Define the list of predictors used by heuristics. This needs
-        to be called before adding heuristics with ``add_heuristic()``
-
-        Args:
-            heuristic_predictors (list):  Predictors and their weights 
-                                          to be used with heuristics. 
-                                          Should be in the same form 
-                                          as ``Decoder.predictors``,
-                                          i.e. a list of 
-                                          (predictor, weight) tuples
-        """
-        self.heuristic_predictors = heuristic_predictors
-    
-    def add_heuristic(self, heuristic):
-        """Add a heuristic to the decoder. For future cost estimates,
-        the sum of the estimates from all heuristics added so far will
-        be used. The predictors used in this heuristic have to be set
-        before via ``set_heuristic_predictors()``
-        
-        Args:
-            heuristic (Heuristic): A heuristic to use for future cost
-                                   estimates
-        """
-        heuristic.set_predictors(self.heuristic_predictors)
-        self.add_observer(heuristic)
-        self.heuristics.append(heuristic)
-    
-    def estimate_future_cost(self, hypo):
-        """Uses all heuristics which have been added with 
-        ``add_heuristic`` to estimate the future cost for a given
-        partial hypothesis. The estimates are used in heuristic based
-        searches like A*. This function returns the future log *cost* 
-        (i.e. the lower the better), assuming that the last word in the
-        partial hypothesis ``hypo`` is consumed next.
-        
-        Args:
-            hypo (PartialHypothesis): Hypothesis for which to estimate
-                                      the future cost given the current
-                                      predictor state
-        
-        Returns
-            float. Future cost
-        """
-        return sum([h.estimate_future_cost(hypo) for h in  self.heuristics])
     
     def has_predictor(self):
         """Returns true if predictors have been added to the decoder. """
@@ -452,26 +273,32 @@ class Decoder(Observable):
         """Combines hypo score with future cost estimates.""" 
         return hypo.score + val
 
+    def max_pos_score(self, hypo):
+        current_score = hypo.score
+        if self.reward_type:
+            factor =  self.l if hypo.get_last_word() != utils.EOS_ID else 0
+            current_score += self.reward_coef*factor
+        return current_score
+
     def get_adjusted_score(self, hypo):
         """Combines hypo score with penalties/rewards.""" 
         current_score = hypo.score
         if self.gumbel:
             return current_score
 
-        #the following are not currently being used. Can add back if there's reason
-        if getattr(self, 'reward_type', False): 
+        if self.reward_type: 
             factor =  min(self.l, len(hypo))
             current_score += self.reward_coef*factor
-            if self.heuristics:
+            if self.heuristic_search:
                 if hypo.get_last_word() != utils.EOS_ID:
                         potential = max(self.l - len(hypo.trgt_sentence),0) 
                         current_score += self.reward_coef*potential
-        elif getattr(self, 'heuristic_search', False):
+        elif self.heuristic_search:
             if hypo.get_last_word() != utils.EOS_ID:
                 remaining = self.max_len - len(hypo.trgt_sentence) 
                 current_score += self.lmbda*self.epsilon*remaining
 
-        elif getattr(self, 'length_norm', False): 
+        elif self.length_norm: 
             current_score /= len(hypo)
 
         return current_score
@@ -513,8 +340,7 @@ class Decoder(Observable):
             
     def initialize_predictor(self, src_sentence):
         """First, increases the sentence id counter and calls
-        ``initialize()`` on all predictors. Then, ``initialize()`` is
-        called for all heuristics.
+        ``initialize()`` on all predictors.
         
         Args:
             src_sentence (list): List of source word ids without <S> or
@@ -525,8 +351,6 @@ class Decoder(Observable):
         self.current_sen_id += 1
         self.predictor.set_current_sen_id(self.current_sen_id)
         self.predictor.initialize(src_sentence)
-        for h in self.heuristics:
-            h.initialize(src_sentence)
     
     def add_full_hypo(self, hypo):
         """Adds a new full hypothesis to ``full_hypos``. This can be
@@ -598,26 +422,6 @@ class Decoder(Observable):
         hypo.score = self.get_adjusted_score(hypo)
         return hypo
 
-    
-    def get_max_expansions(self, max_expansions_param, src_sentence):
-        """This is a helper for decoders which support the 
-        ``max_node_expansions`` parameter. It returns the maximum
-        number of node expansions for the given sentence.
-        
-        Args:
-            max_expansions_param (int): max_node_expansions parameter
-                                        passed through from the config
-            src_sentence (list): Current source sentence
-        
-        Returns:
-            int. Maximum number of node expansions for this decoding
-            task.
-        """
-        if max_expansions_param > 0:
-            return max_expansions_param
-        if max_expansions_param < 0:
-            return -len(src_sentence) * max_expansions_param
-        return 100000000  
     
     def set_predictor_states(self, states):
         """Calls ``set_state()`` on all predictors. """

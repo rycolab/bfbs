@@ -1,28 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This module is the bridge between the command line configuration of
-the decode.py script and the SGNMT software architecture consisting of
-decoders, predictors, and output handlers. A common use case is to call
-`create_decoder()` first, which reads the SGNMT configuration and loads
-the right predictors and decoding strategy with the right arguments.
-The actual decoding is implemented in `do_decode()`. See `decode.py`
-to learn how to use this module.
-"""
-
 import logging
 import codecs
 import sys
@@ -61,7 +36,7 @@ def base_init(new_args):
         sys.stderr = codecs.getwriter('UTF-8')(sys.stderr)
         sys.stdout = codecs.getwriter('UTF-8')(sys.stdout)
         sys.stdin = codecs.getreader('UTF-8')(sys.stdin)
-        logging.warn("SGNMT is tested with Python 3, but you are using "
+        logging.warn("Library is tested with Python 3, but you are using "
                      "Python 2. Expect the unexpected or switch to >3.5.")
     # Set up logger
     logger = logging.getLogger(__name__)

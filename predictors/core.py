@@ -1,23 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This module contains the two basic predictor interfaces
-for bounded and unbounded vocabulary predictors.
-"""
-
 from abc import abstractmethod
 
 import utils
@@ -47,10 +27,6 @@ class Predictor(Observer):
         """This function is called between ``initialize()`` calls to 
         increment the sentence id counter. It can also be used to skip 
         sentences for the --range argument.
-        
-        Args:
-            cur_sen_id (int):  Sentence id for the next call of
-                               ``initialize()``
         """
         self.current_sen_id = cur_sen_id
     
@@ -120,25 +96,6 @@ class Predictor(Observer):
                            ``get_state()``
         """
         raise NotImplementedError
-    
-    def estimate_future_cost(self, hypo):
-        """Predictors can implement their own look-ahead cost functions.
-        They are used in A* if the --heuristics parameter is set to 
-        predictor. This function should return the future log *cost* 
-        (i.e. the lower the better) given the current predictor state, 
-        assuming that the last word in the partial hypothesis 'hypo' is
-        consumed next. This function must not change the internal 
-        predictor state.
-        
-        Args:
-            hypo (PartialHypothesis): Hypothesis for which to estimate
-                                      the future cost given the current
-                                      predictor state
-        
-        Returns
-            float. Future cost
-        """
-        return 0.0
     
     def get_unk_probability(self, posterior):
         """This function defines the probability of all words which are

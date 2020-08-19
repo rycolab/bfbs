@@ -1,29 +1,17 @@
 import copy
-import numpy as np
 import time
+import utils
+import sampling_utils
 
-import utils, sampling_utils
+import numpy as np
 from bisect import bisect
 from decoding.core import Decoder, PartialHypothesis
 
 
 class SamplingDecoder(Decoder):
+
     name = "sampling"
     def __init__(self, decoder_args):
-        """Creates a new A* decoder instance. The following values are
-        fetched from `decoder_args`:
-        
-            nbest (int): If this is set to a positive value, we do not
-                         stop decoding at the first complete path, but
-                         continue search until we collected this many
-                         complete hypothesis. With an admissible
-                         heuristic, this will yield an exact n-best
-                         list.
-        
-        Args:
-            decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
-        """
         super(SamplingDecoder, self).__init__(decoder_args)
         self.nbest = decoder_args.nbest
         assert not self.gumbel
@@ -70,22 +58,10 @@ class SamplingDecoder(Decoder):
 
 
 class NucleusSamplingDecoder(SamplingDecoder):
+
     name = "nucleus_sampling"
     def __init__(self, decoder_args):
-        """Creates a new A* decoder instance. The following values are
-        fetched from `decoder_args`:
         
-            nbest (int): If this is set to a positive value, we do not
-                         stop decoding at the first complete path, but
-                         continue search until we collected this many
-                         complete hypothesis. With an admissible
-                         heuristic, this will yield an exact n-best
-                         list.
-        
-        Args:
-            decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
-        """
         super(NucleusSamplingDecoder, self).__init__(decoder_args)
         self.nucleus_threshold = decoder_args.nucleus_threshold
 

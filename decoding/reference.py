@@ -1,7 +1,7 @@
 import logging
 import time
-
 import utils
+
 from decoding.core import Decoder, PartialHypothesis
 
 
@@ -9,13 +9,6 @@ class ReferenceDecoder(Decoder):
     
     name = "reference"
     def __init__(self, decoder_args):
-        """Creates a new reference decoder instance. The following values are
-        fetched from `decoder_args`:
-        
-        Args:
-            decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
-        """
         super(ReferenceDecoder, self).__init__(decoder_args)
         
     def decode(self, src_sentence, trgt_sentence):

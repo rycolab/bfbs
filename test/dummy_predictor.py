@@ -14,15 +14,7 @@ class DummyPredictor(Predictor):
     """Predictor for using fairseq models."""
 
     def __init__(self, vocab_size=10, n_cpu_threads=-1, seed=0):
-        """Initializes a fairseq predictor.
-
-        Args:
-            model_path (string): Path to the fairseq model (*.pt). Like
-                                 --path in fairseq-interactive.
-            lang_pair (string): Language pair string (e.g. 'en-fr').
-            user_dir (string): Path to fairseq user directory.
-            n_cpu_threads (int): Number of CPU threads. If negative,
-                                 use GPU.
+        """Initializes a fake predictor with deterministic outputs.
         """
         super(DummyPredictor, self).__init__()
         self.vocab_size = vocab_size
@@ -41,7 +33,7 @@ class DummyPredictor(Predictor):
         hash_key = int(hashlib.sha256(hash_rep.encode('utf-8')).hexdigest(), 16) 
         dist_key = hash_key % self.num_dists
         unnorm_posterior = copy.copy(self.prob_dists[dist_key])
-        #unnorm_posterior[self.eos_id] -= unnorm_posterior.max()/max(len(self.consumed),1)
+        unnorm_posterior[utils.EOS_ID] += unnorm_posterior.max()/max(len(self.src)*2 -len(self.consumed),1)
         return utils.log_softmax(unnorm_posterior, temperature=self.model_temperature)
     
     def initialize(self, src_sentence):

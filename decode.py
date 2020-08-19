@@ -1,29 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This is the main runner script for SGNMT decoding. 
-SGNMT can run in three different modes. The standard mode 'file' reads
-sentences to translate from a plain text file. The mode 'stdin' can be
-used to parse stdin. The last mode 'shell' enables interactive inter-
-action with SGNMT via keyboard. For detailed usage descriptions please
-visit the tutorial home page:
-
-http://ucam-smt.github.io/sgnmt/html/tutorial.html
-"""
 from __future__ import absolute_import
 import logging
 import os
@@ -108,13 +82,13 @@ decoder = decode_utils.create_decoder()
 outputs = decode_utils.create_output_handlers()
 
 if args.input_method == 'file':
-    if os.access(args.src_test, os.R_OK):
+    if os.access(args.input_file, os.R_OK):
         trgt = None
-        if args.trgt_test  and os.access(args.trgt_test, os.R_OK):
-            with open(args.trgt_test) as f:
+        if args.trgt_file  and os.access(args.trgt_file, os.R_OK):
+            with open(args.trgt_file) as f:
                 trgt = [line.strip() for line in f]
         print(time.time())
-        with open(args.src_test) as f:
+        with open(args.input_file) as f:
             decode_utils.do_decode(decoder,
                                    outputs,
                                    [line.strip() for line in f],
@@ -123,8 +97,8 @@ if args.input_method == 'file':
         print(time.time())
     else:
         logging.fatal("Input file '%s' not readable. Please double-check the "
-                      "src_test option or choose an alternative input_method."
-                      % args.src_test)
+                      "input_file option or choose an alternative input_method."
+                      % args.input_file)
 elif args.input_method == 'dummy':
     decode_utils.do_decode(decoder, outputs, False)
 elif args.input_method == "stdin":

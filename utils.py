@@ -9,7 +9,7 @@ from functools import reduce
 import numpy as np
 from scipy.special import logsumexp
 
-# Reserved IDs
+# Reserved IDs; reset for different indexing schemes
 GO_ID = 1
 """Reserved word ID for the start-of-sentence symbol. """
 

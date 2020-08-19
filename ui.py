@@ -1,23 +1,3 @@
-# -*- coding: utf-8 -*-
-# coding=utf-8
-# Copyright 2019 The SGNMT Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""This module handles the user interface and contains subroutines
-for parsing and verifying config files and command line arguments.
-"""
-
 import argparse
 import logging
 import os
@@ -32,7 +12,6 @@ try:
     import yaml
 except:
     YAML_AVAILABLE = False
-
 
 def str2bool(v):
     """For making the ``ArgumentParser`` understand boolean values"""
@@ -164,16 +143,20 @@ def get_parser():
                         "points to a file, we grap sentence IDs to translate "
                         "from that file and delete the decoded IDs. This can "
                         "be used for distributed decoding.")
-    group.add_argument("--src_test", default="",
-                        help="Path to source test set. This is expected to be "
+    group.add_argument("--input_file", default="",
+                        help="Path to source. This is expected to be "
                         "a plain text file with one source sentence in each "
-                        "line. Words need to be indexed, i.e. use word IDs "
-                        "instead of their string representations.")
-    group.add_argument("--trgt_test", default="",
-                        help="Path to source test set. This is expected to be "
+                        "line. Words need to be appropriately formatted for "
+                        "the specified preprocessing procedure, e.g. use word IDs "
+                        "instead of their string representations if preprocessing "
+                        "set to 'id'")
+    group.add_argument("--trgt_file", default="",
+                        help="Path to target test set. This is expected to be "
                         "a plain text file with one source sentence in each "
-                        "line. Words need to be indexed, i.e. use word IDs "
-                        "instead of their string representations.")
+                        "line. Words need to be appropriately formatted for "
+                        "the specified preprocessing procedure, e.g. use word IDs "
+                        "instead of their string representations if preprocessing "
+                        "set to 'id'")
     group.add_argument("--indexing_scheme", default="fairseq",
                         choices=['t2t', 'fairseq'],
                         help="This parameter defines the reserved IDs.\n\n"
@@ -209,9 +192,7 @@ def get_parser():
                         "* 'tropical': approximate with max(l1,l2)\n"
                         "* 'log': Use logsumexp in scipy")
     group.add_argument("--n_cpu_threads", default=-1, type=int,
-                        help="Set the number of CPU threads for libraries like"
-                        " Theano or TensorFlow for internal multithreading. "
-                        "Also, see the OMP_NUM_THREADS environment variable.")
+                        help="Set the number of CPU threads.")
     group.add_argument("--single_cpu_thread", default=False, type='bool',
                         help="Synonym for --n_cpu_threads=1")
     
@@ -229,21 +210,13 @@ def get_parser():
                         "posteriors. Predictor distributions can still "
                         "produce UNKs, but they have to be replaced by "
                         "other words by other predictors")
-    group.add_argument("--max_node_expansions", default=0, type=int,
-                        help="This parameter allows to limit the total number "
-                        "of search space expansions for a single sentence. "
-                        "If this is 0 we allow an unlimited number of "
-                        "expansions. If it is negative, the maximum number of "
-                        "expansions is this times the length of the source "
-                        "sentence. Supporting decoders:\n"
-                        "dfs")
     group.add_argument("--max_len_factor", default=2.0, type=float,
                         help="Limits the length of hypotheses to avoid "
                         "infinity loops in search strategies for unbounded "
                         "search spaces. The length of any translation is "
                         "limited to max_len_factor times the length of the "
                         "source sentence.")
-    group.add_argument("--early_stopping", default=False, type='bool',
+    group.add_argument("--early_stopping", default=True, type='bool',
                         help="Use this parameter if you are only interested in "
                         "the first best decoding result. This option has a "
                         "different effect depending on the used --decoder. For"
@@ -267,18 +240,13 @@ def get_parser():
                        "between groups as in Vijayakumar et. al. (2016). Only "
                        "compatible with 'diverse_beam' decoder. Setting value "
                        "equal to 0 recovers standard beam search.")
-    group.add_argument("--simplelendfs_lower_bounds_file", default="",
-                        help="Path to a file with length dependent lower "
-                        "lower bounds for the simplelendfs decoder. Each line "
-                        "must be in the format <len1>:<lower-bound1> ... "
-                        "<lenN>:<lower-boundN>.")
     group.add_argument("--memory_threshold_coef", default=0, type=int,
                         help="total queue size will be set to `memory_threshold_coef`"
                          "* beam size. When capacity is exceeded, the worst scoring "
                          "hypothesis from the earliest time step will be discarded")
     group.add_argument("--gumbel", action='store_true',
-                        help="Add gumbel RV to make beam search effectively"
-                        "random sampling")
+                        help="Add gumbel random variable as in Kool et. al 2019. "
+                        "effectively makex beam search random sampling")
     group.add_argument('--temperature', default=1., type=float, metavar='N',
                        help='temperature for generation')
     group.add_argument('--nucleus_threshold', default=0.95, type=float, metavar='N',
@@ -286,6 +254,21 @@ def get_parser():
                        "Value specifies probability core from which to consider "
                        "top items for sampling. Only compatible with 'sampling' "
                        "decoder.")
+    group.add_argument("--length_normalization", default=False, action="store_true",
+                       help="Normalize hypothesis score by length")
+    # group.add_argument("--shrinking", action='store_true',
+    #                     help="Implementation of shrinking beam as in OpenNMT")
+    # group.add_argument("--huang", action='store_true',
+    #                     help="Early stopping method of Huang et. al. 2016")
+    group.add_argument("--heuristic_search", default=False, action='store_true',
+                        help="Use heuristic search method")
+    group.add_argument("--reward_coefficient", default=1., type=float,
+                        help="Multiplicative constant for reward in scoring function")
+    group.add_argument("--reward_type", default=None,
+                        choices=['bounded','max', None],
+                        help="Reward type")
+    group.add_argument("--bounded_reward_factor", default=1., type=float,
+                        help="Reward type")
     
 
     ## Output options

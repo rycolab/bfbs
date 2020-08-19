@@ -1,10 +1,7 @@
-"""Implementation of the beam search strategy """
-
-import copy
 import logging
 import time
-
 import utils
+
 from decoding.core import Decoder, PartialHypothesis
 import numpy as np
 
@@ -17,30 +14,6 @@ class BeamDecoder(Decoder):
     """
     name = 'beam'
     def __init__(self, decoder_args):
-        """Creates a new beam decoder instance. The following values
-        are fetched from `decoder_args`:
-        
-            hypo_recombination (bool): Activates hypo recombination 
-            beam (int): Absolute beam size. A beam of 12 means
-                        that we keep track of 12 active hypotheses
- 
-            diversity_factor (float): If this is set to a positive 
-                                      value we add diversity promoting
-                                      penalization terms to the partial
-                                      hypothesis scores following Li
-                                      and Jurafsky, 2016
-            early_stopping (bool): If true, we stop when the best
-                                   scoring hypothesis ends with </S>.
-                                   If false, we stop when all hypotheses
-                                   end with </S>. Enable if you are
-                                   only interested in the single best
-                                   decoding result. If you want to 
-                                   create full 12-best lists, disable
-
-        Args:
-            decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
-        """
         super(BeamDecoder, self).__init__(decoder_args)
         self.nbest = max(1, decoder_args.nbest)
         self.beam_size = decoder_args.beam if not self.gumbel else self.nbest
