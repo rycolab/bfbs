@@ -276,7 +276,10 @@ class Decoder(Observable):
     def max_pos_score(self, hypo):
         current_score = hypo.score
         if self.reward_type:
-            factor =  self.l if hypo.get_last_word() != utils.EOS_ID else 0
+            if self.heuristic_search:
+                return self.get_adjusted_score(hypo)
+
+            factor =  self.l if hypo.get_last_word() != utils.EOS_ID else min(len(hypo), self.l)
             current_score += self.reward_coef*factor
         return current_score
 
@@ -291,12 +294,8 @@ class Decoder(Observable):
             current_score += self.reward_coef*factor
             if self.heuristic_search:
                 if hypo.get_last_word() != utils.EOS_ID:
-                        potential = max(self.l - len(hypo.trgt_sentence),0) 
-                        current_score += self.reward_coef*potential
-        elif self.heuristic_search:
-            if hypo.get_last_word() != utils.EOS_ID:
-                remaining = self.max_len - len(hypo.trgt_sentence) 
-                current_score += self.lmbda*self.epsilon*remaining
+                    potential = max(self.l - len(hypo.trgt_sentence),0) 
+                    current_score += self.reward_coef*potential
 
         elif self.length_norm: 
             current_score /= len(hypo)

@@ -66,6 +66,12 @@ class MinMaxHeap(object):
         Remove and return maximum element. Complexity: O(log(n))
         """
         replacemax(self.a, self.size, val)
+
+    def replacemin(self, val):
+        """
+        Remove and return maximum element. Complexity: O(log(n))
+        """
+        replacemin(self.a, self.size, val)
         
 
 
@@ -211,6 +217,11 @@ def replacemax(array, size, val):
         array[size-1] = val
         bubbleup(array, size-1)
 
+def replacemin(array, size, val):
+    assert size > 0
+    array[0] = val
+    trickledown(array, 0, size)
+    assert minmaxheapproperty(array, len(array))
 
 def insert(array, k, size):
     array[size] = k

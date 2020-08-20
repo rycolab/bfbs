@@ -26,13 +26,7 @@ class DijkstraDecoder(Decoder):
         self.push(open_set, 0.0, PartialHypothesis(self.get_predictor_states()))
 
         while open_set:
-            c,hypo = self.pop(open_set)#.popmin()
-            logging.debug("Expand (est=%f score=%f exp=%d best=%f): sentence: %s"
-                          % (-c, 
-                             hypo.score, 
-                             self.apply_predictor_count, 
-                             self.lower_bound.score if self.lower_bound else utils.NEG_INF, 
-                             hypo.trgt_sentence))
+            c,hypo = self.pop(open_set)
             if hypo.get_last_word() == utils.EOS_ID: # Found best hypothesis
                 hypo.score = self.get_adjusted_score(hypo)
                 self.add_full_hypo(hypo.generate_full_hypothesis())
@@ -58,19 +52,19 @@ class DijkstraDecoder(Decoder):
             return
         if isinstance(set_, MinMaxHeap):
             if set_.size < self.cur_capacity:
-                set_.insert((-score, hypo))
+                set_.insert((score, hypo))
             else:
                 # only push if hypothesis can beat lower bound.
-                min_score = -set_.peekmax()[0]
+                min_score = set_.peekmin()[0]
                 if score > min_score:
-                    set_.replacemax((-score, hypo))
+                    set_.replacemin((score, hypo))
         else:
             heappush(set_, (-score, hypo))
 
     
     def pop(self, set_):
         if isinstance(set_, MinMaxHeap):
-           return set_.popmin()
+           return set_.popmax()
         else:
             return heappop(set_)
 

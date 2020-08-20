@@ -1,6 +1,5 @@
-# SWOR Decoding
 
-Library based on SGNMT: https://github.com/ucam-smt/sgnmt. See their [docs](http://ucam-smt.github.io/sgnmt/html/) for setting up a fairseq model to work with the library.
+Decoding library based on SGNMT: https://github.com/ucam-smt/sgnmt. See their [docs](http://ucam-smt.github.io/sgnmt/html/) for setting up a fairseq model to work with the library.
 
 ## Dependencies 
 
@@ -41,7 +40,7 @@ Basic beam search can be performed on a fairseq model translating from German to
 A faster version, best first beam search, simply changes the decoder:
 
 ```
- python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/valid.de --preprocessing word --postprocessing bpe@@ --decoder dijkstra_ts --beam 10 
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/input_file_bpe.txt --preprocessing word --postprocessing bpe@@ --decoder dijkstra_ts --beam 10 
  ```
 
 By default, both decoders only return the best solution. Set `--early_stopping False` if you want the entire set.
@@ -62,12 +61,12 @@ A basic example of outputs can be seen when using the test suite:
  To run SWOR decoding with the gumbel-max trick, use the command:
 
  ```
- python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/valid.de --preprocessing word --postprocessing bpe@@ --decoder dijkstra --beam 10 --gumbel --temperature 0.1
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/input_file_bpe.txt --preprocessing word --postprocessing bpe@@ --decoder dijkstra --beam 10 --gumbel --temperature 0.1
  ```
  where `--beam 10` would lead to 10 samples. For gumbel sampling, you should get the same results using the beam decoder.
  
  ```
- python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/valid.de --preprocessing word --postprocessing bpe@@ --decoder beam --beam 10 --gumbel --temperature 0.1
+ python decode.py  --fairseq_path data/ckpts/model.pt --fairseq_lang_pair de-en --src_wmap data/wmaps/wmap.de --trg_wmap data/wmaps/wmap.en --input_file data/input_file_bpe.txt --preprocessing word --postprocessing bpe@@ --decoder beam --beam 10 --gumbel --temperature 0.1
  ```
  For other sampling schemes, remove the `--gumbel` flag and set the decoder to `sampling, nucleus_sampling`.
  
@@ -82,6 +81,6 @@ To see all outputs, set `--num_log <n>` for however many outputs (per input) you
  Scoring is not integrated into the library but can be performed afterwards. Make sure you use the arguments `--outputs text --output_path <file_name>.txt` during decoding and then detokenize the text using the mosesdecoder detokenizer script (copied to `scripts/detokenizer.perl` for ease). Given a (detokenized) baseline, you can then run sacrebleu to calculate BLEU. For example:
 
  ```
- cat <output_file_name>.txt | perl scripts/detokenizer.perl -threads 8 -l en | sacrebleu data/valid.detok.en
+ cat <output_file_name>.txt | perl scripts/detokenizer.perl -threads 8 -l en | sacrebleu data/input_file_bpe.txttok.en
  ```
 

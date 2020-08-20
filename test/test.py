@@ -206,9 +206,9 @@ except:
     logging.warn("Range argument not valid; defaulting to 10 examples")
 
 src_sentences = create_src_sentences(num_sentences, str_length=5)
-if args.beam <= 0:
+if args.beam <= 0 and not (args.gumbel or 'sampling' in args.decoder):
     logging.warn("Using beam size <= 0. Decoding may not terminate")
-if args.decoder == "dijkstra_ts":
+if args.decoder == "dijkstra_ts" and args.memory_threshold_coef <= 0:
     args.decoder = "beam"
     decoder2 = create_decoder()
     compare_decoders(decoder, decoder2, src_sentences, args.early_stopping, num_log=args.num_log)

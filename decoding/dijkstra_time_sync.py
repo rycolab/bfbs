@@ -26,9 +26,9 @@ class DijkstraTSDecoder(Decoder):
         self.total_queue_size = 0
         
         while self.queue_order:
-            c,t = next(self.queue_order)
+            _, t = next(self.queue_order)
             cur_queue = self.queues[t]
-            score, hypo = cur_queue.popmin() 
+            score, hypo = cur_queue.popmax() 
             self.total_queue_size -= 1
             self.time_sync[t] -= 1
 
@@ -54,12 +54,11 @@ class DijkstraTSDecoder(Decoder):
         return self.get_full_hypos_sorted()
 
     def initialize_predictor(self, src_sentence):
+        super().initialize_predictor(src_sentence)
         if self.reward_type == "bounded":
-            # french is 0.72
             self.l = self.bounded_reward_coef*len(src_sentence)
         elif self.reward_type == "max":
-            self.l = self.max_len
-        super().initialize_predictor(src_sentence)
+            self.l = self.max_len        
 
     def initialize_order_ds(self):
         self.queues = [MinMaxHeap() for k in range(self.max_len+1)]
@@ -71,7 +70,7 @@ class DijkstraTSDecoder(Decoder):
         self.time_sync[0] = 1
         
     def update(self, queue, t, forward_prune=False):
-        # remove current best value associated with queue
+        # remove current best value associated with time step
         self.queue_order.popindex(t, default=None)
 
         #if beam used up at current time step, can prune hypotheses from older time steps
@@ -80,7 +79,7 @@ class DijkstraTSDecoder(Decoder):
 
         #replace with next best value if anything left in queue
         if len(queue) > 0:
-            self.queue_order[-queue.peekmin()[0]] = t
+            self.queue_order[queue.peekmax()[0]] = t
 
         # if previous hypothesis was complete, reduce beam in next time steps
         if forward_prune:
@@ -91,8 +90,8 @@ class DijkstraTSDecoder(Decoder):
                     self.prune(i)
                     return
                 while len(self.queues[i]) > self.time_sync[i]:
-                    # remove largest element since beam is getting "smaller"
-                    self.queues[i].popmax()
+                    # remove lowest scoring element since beam is getting "smaller"
+                    self.queues[i].popmin()
                 i-=1
     
     def prune(self, t):
@@ -103,22 +102,22 @@ class DijkstraTSDecoder(Decoder):
     def add_hypo(self, hypo, queue, t):
         score = self.get_adjusted_score(hypo)
         if len(queue) < self.time_sync[t]:
-            queue.insert((-score, hypo))
+            queue.insert((score, hypo))
             if self.total_queue_size >= self.size_threshold:
                 self.remove_one()
             else:
                 self.total_queue_size += 1
         else:
-            min_score = -queue.peekmax()[0]
+            min_score = queue.peekmin()[0]
             if score > min_score:
-                queue.replacemax((-score, hypo))
+                queue.replacemin((score, hypo))
         
 
     def remove_one(self):
         """ helper function for memory threshold"""
         for t, q in enumerate(self.queues):
             if len(q) > 0:
-                q.popmax()
+                q.popmin()
                 # if empty, can set queue to null since there are no hypotheses from previous
                 # steps to be expanded.
                 if len(q) == 0:

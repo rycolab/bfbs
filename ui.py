@@ -202,8 +202,7 @@ def get_parser():
                         help="Strategy for traversing the search space which "
                         "is spanned by the predictors.\n")
     group.add_argument("--beam", default=0, type=int,
-                        help="Size of beam. Only used if --decoder is set to "
-                        "'beam' or 'dijkstra'. For 'dijkstra' it limits the capacity"
+                        help="Size of beam. For 'dijkstra' it limits the capacity"
                         " of the queue. Use --beam 0 for unlimited capacity.")
     group.add_argument("--allow_unk_in_output", default=True, type='bool',
                         help="If false, remove all UNKs in the final "
@@ -268,7 +267,10 @@ def get_parser():
                         choices=['bounded','max', None],
                         help="Reward type")
     group.add_argument("--bounded_reward_factor", default=1., type=float,
-                        help="Reward type")
+                        help="Coefficient for bounded length reward. Multiplier for source "
+                        "sentence length until which reward increases for increased  "
+                        "hypothesis length. Should be different for different language "
+                        "pairs.")
     
 
     ## Output options
@@ -414,9 +416,9 @@ def validate_args(args):
     if args.postprocessing != "id" and not args.wmap and not args.trg_wmap:
         logging.warn("Your postprocessing method needs a target wmap.")
         sanity_check_failed = True
-    if args.gumbel and not args.nbest:
+    if (args.gumbel or 'sampling' in args.decoder) and not args.nbest:
         logging.warn("Must set nbest equivalent to number of desired samples "
-                    "when using gumbel decoder; beam size will not be used.")
+                    "when using gumbel or sampling decoders; beam size will not be used.")
         sanity_check_failed = True
     if sanity_check_failed and not args.ignore_sanity_checks:
         raise AttributeError("Sanity check failed (see warnings). If you want "
